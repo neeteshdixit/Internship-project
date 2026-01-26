@@ -320,5 +320,3 @@ After database setup:
 4. Refer to QUICK_START.md for API testing examples
 
 ---
-
-**Last Updated**: 2025-11-25
