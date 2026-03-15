@@ -2,6 +2,7 @@ package com.chat.controller;
 
 import com.chat.model.Opportunity;
 import com.chat.service.OpportunityService;
+import com.chat.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -12,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -23,13 +25,17 @@ import java.util.Map;
 public class OpportunityController {
 
     private final OpportunityService opportunityService;
+    private final UserService userService;
 
     @PostMapping
-    public ResponseEntity<Opportunity> createOpportunity(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<Opportunity> createOpportunity(@RequestBody Map<String, Object> payload, Principal principal) {
         try {
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
             Opportunity opportunity = opportunityService.createOpportunity(
                     ((Number) payload.get("customerId")).longValue(),
-                    ((Number) payload.get("ownerId")).longValue(),
+                    currentUserId,
                     (String) payload.get("title"),
                     new BigDecimal(payload.get("value").toString()),
                     LocalDateTime.parse((String) payload.get("expectedCloseDate"))
@@ -65,8 +71,11 @@ public class OpportunityController {
     }
 
     @GetMapping("/owner/{ownerId}")
-    public ResponseEntity<List<Opportunity>> getOwnerOpportunities(@PathVariable Long ownerId) {
+    public ResponseEntity<List<Opportunity>> getOwnerOpportunities(@PathVariable Long ownerId, Principal principal) {
         try {
+            if (!isSelfOrAdmin(ownerId, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             List<Opportunity> opportunities = opportunityService.getOwnerOpportunities(ownerId);
             return ResponseEntity.ok(opportunities);
         } catch (Exception e) {
@@ -115,8 +124,13 @@ public class OpportunityController {
     public ResponseEntity<Opportunity> updateOpportunityStage(
             @PathVariable Long id,
             @RequestParam String stage,
-            @RequestParam Integer probability) {
+            @RequestParam Integer probability,
+            Principal principal) {
         try {
+            Opportunity existing = opportunityService.getOpportunityById(id);
+            if (!isSelfOrAdmin(existing.getOwner().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             Opportunity updated = opportunityService.updateOpportunityStage(id, stage, probability);
             log.info("Opportunity {} stage updated to: {}", id, stage);
             return ResponseEntity.ok(updated);
@@ -129,8 +143,13 @@ public class OpportunityController {
     @PostMapping("/{id}/win")
     public ResponseEntity<Opportunity> winOpportunity(
             @PathVariable Long id,
-            @RequestParam BigDecimal actualValue) {
+            @RequestParam BigDecimal actualValue,
+            Principal principal) {
         try {
+            Opportunity existing = opportunityService.getOpportunityById(id);
+            if (!isSelfOrAdmin(existing.getOwner().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             Opportunity updated = opportunityService.winOpportunity(id, actualValue);
             log.info("Opportunity {} marked as WON", id);
             return ResponseEntity.ok(updated);
@@ -143,8 +162,13 @@ public class OpportunityController {
     @PostMapping("/{id}/lose")
     public ResponseEntity<Opportunity> loseOpportunity(
             @PathVariable Long id,
-            @RequestParam String reason) {
+            @RequestParam String reason,
+            Principal principal) {
         try {
+            Opportunity existing = opportunityService.getOpportunityById(id);
+            if (!isSelfOrAdmin(existing.getOwner().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             Opportunity updated = opportunityService.loseOpportunity(id, reason);
             log.info("Opportunity {} marked as LOST", id);
             return ResponseEntity.ok(updated);
@@ -157,8 +181,13 @@ public class OpportunityController {
     @PutMapping("/{id}")
     public ResponseEntity<Opportunity> updateOpportunity(
             @PathVariable Long id,
-            @RequestBody Opportunity details) {
+            @RequestBody Opportunity details,
+            Principal principal) {
         try {
+            Opportunity existing = opportunityService.getOpportunityById(id);
+            if (!isSelfOrAdmin(existing.getOwner().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             Opportunity updated = opportunityService.updateOpportunity(id, details);
             log.info("Opportunity updated: {}", id);
             return ResponseEntity.ok(updated);
@@ -169,8 +198,12 @@ public class OpportunityController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteOpportunity(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteOpportunity(@PathVariable Long id, Principal principal) {
         try {
+            Opportunity existing = opportunityService.getOpportunityById(id);
+            if (!isSelfOrAdmin(existing.getOwner().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             opportunityService.deleteOpportunity(id);
             log.info("Opportunity deleted: {}", id);
             return ResponseEntity.ok().build();
@@ -200,5 +233,13 @@ public class OpportunityController {
             log.error("Error calculating pipeline value: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
+    }
+
+    private boolean isSelfOrAdmin(Long targetUserId, Principal principal) {
+        com.chat.model.User currentUser = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        boolean isAdmin = currentUser.getRoles().stream()
+                .anyMatch(role -> "ROLE_ADMIN".equals(role.getName()));
+        return isAdmin || currentUser.getId().equals(targetUserId);
     }
 }

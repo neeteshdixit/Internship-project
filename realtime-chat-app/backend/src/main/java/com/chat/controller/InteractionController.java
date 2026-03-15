@@ -2,6 +2,7 @@ package com.chat.controller;
 
 import com.chat.model.Interaction;
 import com.chat.service.InteractionService;
+import com.chat.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/interactions")
@@ -19,13 +21,17 @@ import java.util.Map;
 public class InteractionController {
 
     private final InteractionService interactionService;
+    private final UserService userService;
 
     @PostMapping
-    public ResponseEntity<Interaction> recordInteraction(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<Interaction> recordInteraction(@RequestBody Map<String, Object> payload, Principal principal) {
         try {
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
             Interaction interaction = interactionService.recordInteraction(
                     ((Number) payload.get("customerId")).longValue(),
-                    ((Number) payload.get("userId")).longValue(),
+                    currentUserId,
                     (String) payload.get("type"),
                     (String) payload.get("notes")
             );
@@ -60,8 +66,11 @@ public class InteractionController {
     }
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<Interaction>> getUserInteractions(@PathVariable Long userId) {
+    public ResponseEntity<List<Interaction>> getUserInteractions(@PathVariable Long userId, Principal principal) {
         try {
+            if (!isSelfOrAdmin(userId, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             List<Interaction> interactions = interactionService.getUserInteractions(userId);
             return ResponseEntity.ok(interactions);
         } catch (Exception e) {
@@ -84,8 +93,13 @@ public class InteractionController {
     @PutMapping("/{id}")
     public ResponseEntity<Interaction> updateInteraction(
             @PathVariable Long id,
-            @RequestBody Map<String, String> payload) {
+            @RequestBody Map<String, String> payload,
+            Principal principal) {
         try {
+            Interaction existing = interactionService.getInteractionById(id);
+            if (!isSelfOrAdmin(existing.getUser().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             Interaction updated = interactionService.updateInteraction(
                     id,
                     payload.get("type"),
@@ -103,8 +117,13 @@ public class InteractionController {
     @PostMapping("/{id}/follow-up")
     public ResponseEntity<Void> setFollowUpDate(
             @PathVariable Long id,
-            @RequestParam String nextFollowUpDate) {
+            @RequestParam String nextFollowUpDate,
+            Principal principal) {
         try {
+            Interaction existing = interactionService.getInteractionById(id);
+            if (!isSelfOrAdmin(existing.getUser().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             interactionService.setFollowUpDate(id, LocalDateTime.parse(nextFollowUpDate));
             log.info("Follow-up date set for interaction: {}", id);
             return ResponseEntity.ok().build();
@@ -115,8 +134,15 @@ public class InteractionController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteInteraction(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteInteraction(@PathVariable Long id, Principal principal) {
         try {
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
+            Interaction interaction = interactionService.getInteractionById(id);
+            if (!interaction.getUser().getId().equals(currentUserId) && !isSelfOrAdmin(interaction.getUser().getId(), principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             interactionService.deleteInteraction(id);
             log.info("Interaction deleted: {}", id);
             return ResponseEntity.ok().build();
@@ -124,5 +150,13 @@ public class InteractionController {
             log.error("Error deleting interaction: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
+    }
+
+    private boolean isSelfOrAdmin(Long targetUserId, Principal principal) {
+        com.chat.model.User currentUser = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        boolean isAdmin = currentUser.getRoles().stream()
+                .anyMatch(role -> "ROLE_ADMIN".equals(role.getName()));
+        return isAdmin || currentUser.getId().equals(targetUserId);
     }
 }

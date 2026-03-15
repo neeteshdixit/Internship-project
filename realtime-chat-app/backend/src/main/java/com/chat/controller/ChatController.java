@@ -45,12 +45,8 @@ public class ChatController {
 
             Message message = messageService.sendPrivateMessage(senderId, receiverId, payload.get("content"));
             
-            // Notify receiver in real-time via WebSocket
-            messagingTemplate.convertAndSendToUser(
-                    String.valueOf(receiverId),
-                    "/queue/messages",
-                    message
-            );
+            // Notify receiver in real-time via WebSocket topic keyed by receiver id.
+            messagingTemplate.convertAndSend("/chat/private/" + receiverId, message);
             
             return ResponseEntity.ok(message);
         } catch (Exception e) {
@@ -95,45 +91,69 @@ public class ChatController {
         }
     }
 
-    @PutMapping("/{messageId}/read")
-    public ResponseEntity<Void> markAsRead(@PathVariable Long messageId) {
+    @GetMapping("/group/{groupId}")
+    public ResponseEntity<List<Message>> getGroupMessages(@PathVariable Long groupId) {
         try {
-            messageService.markMessageAsRead(messageId);
+            List<Message> messages = messageService.getGroupMessages(groupId);
+            return ResponseEntity.ok(messages);
+        } catch (Exception e) {
+            log.error("Error fetching group messages: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    @PutMapping("/{messageId}/read")
+    public ResponseEntity<Void> markAsRead(@PathVariable Long messageId, Principal principal) {
+        try {
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
+            messageService.markMessageAsRead(messageId, currentUserId);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             log.error("Error marking message as read: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
     }
 
     @PutMapping("/{messageId}/edit")
     public ResponseEntity<Message> editMessage(
             @PathVariable Long messageId,
-            @RequestBody Map<String, String> payload) {
+            @RequestBody Map<String, String> payload,
+            Principal principal) {
         try {
-            Message message = messageService.editMessage(messageId, payload.get("content"));
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
+            Message message = messageService.editMessage(messageId, currentUserId, payload.get("content"));
             return ResponseEntity.ok(message);
         } catch (Exception e) {
             log.error("Error editing message: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
     }
 
     @DeleteMapping("/{messageId}")
-    public ResponseEntity<Void> deleteMessage(@PathVariable Long messageId) {
+    public ResponseEntity<Void> deleteMessage(@PathVariable Long messageId, Principal principal) {
         try {
-            messageService.deleteMessage(messageId);
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
+            messageService.deleteMessage(messageId, currentUserId);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             log.error("Error deleting message: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Message>> searchMessages(@RequestParam String keyword) {
+    public ResponseEntity<List<Message>> searchMessages(@RequestParam String keyword, Principal principal) {
         try {
-            List<Message> messages = messageService.searchMessages(keyword);
+            Long currentUserId = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getId();
+            List<Message> messages = messageService.searchMessages(currentUserId, keyword);
             return ResponseEntity.ok(messages);
         } catch (Exception e) {
             log.error("Error searching messages: {}", e.getMessage());
@@ -156,7 +176,7 @@ public class ChatController {
     }
 
     @MessageMapping("/group/send")
-    @SendTo("/chat/group/{groupId}")
+    @SendTo("/group/broadcast")
     public Message sendGroupMessage(@Payload Message message) {
         message.setSentAt(LocalDateTime.now());
         log.info("Broadcasting group message from {}", message.getSender().getUsername());

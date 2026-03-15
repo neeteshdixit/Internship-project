@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/users")
@@ -42,6 +43,18 @@ public class UserController {
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             log.error("Error fetching user: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<User> getCurrentProfile(Principal principal) {
+        try {
+            User user = userService.findByUsername(principal.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            log.error("Error fetching current profile: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
@@ -95,8 +108,11 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User userDetails) {
+    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User userDetails, Principal principal) {
         try {
+            if (!isSelfOrAdmin(id, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             User updatedUser = userService.updateUser(id, userDetails);
             log.info("User updated: {}", id);
             return ResponseEntity.ok(updatedUser);
@@ -109,8 +125,12 @@ public class UserController {
     @PostMapping("/{id}/change-password")
     public ResponseEntity<User> changePassword(
             @PathVariable Long id,
-            @RequestBody Map<String, String> payload) {
+            @RequestBody Map<String, String> payload,
+            Principal principal) {
         try {
+            if (!isSelfOrAdmin(id, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             User user = userService.changePassword(id, payload.get("oldPassword"), payload.get("newPassword"));
             log.info("Password changed for user: {}", id);
             return ResponseEntity.ok(user);
@@ -121,8 +141,11 @@ public class UserController {
     }
 
     @PostMapping("/{id}/online")
-    public ResponseEntity<Void> setOnlineStatus(@PathVariable Long id, @RequestParam Boolean online) {
+    public ResponseEntity<Void> setOnlineStatus(@PathVariable Long id, @RequestParam Boolean online, Principal principal) {
         try {
+            if (!isSelfOrAdmin(id, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             userService.setUserOnlineStatus(id, online);
             log.info("User {} online status set to: {}", id, online);
             return ResponseEntity.ok().build();
@@ -182,5 +205,14 @@ public class UserController {
             log.error("Error deleting user: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
+    }
+
+    private boolean isSelfOrAdmin(Long targetUserId, Principal principal) {
+        User currentUser = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        boolean isAdmin = currentUser.getRoles().stream()
+                .anyMatch(role -> "ROLE_ADMIN".equals(role.getName()));
+        return isAdmin || currentUser.getId().equals(targetUserId);
     }
 }

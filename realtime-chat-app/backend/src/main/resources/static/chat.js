@@ -1,19 +1,15 @@
 /**
  * Chat Application - Frontend Logic
- * Handles authentication, messaging, and real-time updates
  */
 
-// ===== STATE MANAGEMENT =====
 let stompClient = null;
-let currentUser = null;
+let currentUser = AuthAPI.getStoredUser();
 let currentConversationId = null;
 let currentConversationType = null;
 let usersList = [];
 let groupsList = [];
 
-// ===== INITIALIZATION =====
-document.addEventListener('DOMContentLoaded', function() {
-    // ===== DOM ELEMENTS =====
+document.addEventListener('DOMContentLoaded', function () {
     const authModal = document.getElementById('authModal');
     const chatApp = document.getElementById('chatApp');
     const loginForm = document.getElementById('loginForm');
@@ -25,8 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendBtn = document.getElementById('sendBtn');
     const logoutBtn = document.getElementById('logoutBtn');
     const notification = document.getElementById('notification');
+    const startCallBtn = document.getElementById('startCallBtn');
+    const startAudioBtn = document.getElementById('startAudioBtn');
 
-    // Store in window for global access
     window.authModal = authModal;
     window.chatApp = chatApp;
     window.loginForm = loginForm;
@@ -39,16 +36,28 @@ document.addEventListener('DOMContentLoaded', function() {
     window.logoutBtn = logoutBtn;
     window.notification = notification;
 
-    // ===== AUTHENTICATION EVENTS =====
     const loginBtn = document.getElementById('loginBtn');
     const registerBtn = document.getElementById('registerBtn');
-    
+    const newChatBtn = document.getElementById('newChatBtn');
+    const createGroupBtn = document.getElementById('createGroupBtn');
+    const startConvBtn = document.getElementById('startConvBtn');
+    const createGroupSubmitBtn = document.getElementById('createGroupSubmitBtn');
+    const addInteractionBtn = document.getElementById('addInteractionBtn');
+    const addOpportunityBtn = document.getElementById('addOpportunityBtn');
+
     if (loginBtn) loginBtn.addEventListener('click', handleLogin);
     if (registerBtn) registerBtn.addEventListener('click', handleRegister);
     if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-
-    // ===== CHAT EVENTS =====
     if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+    if (newChatBtn) newChatBtn.addEventListener('click', () => openModal('newChatModal'));
+    if (createGroupBtn) createGroupBtn.addEventListener('click', () => openModal('createGroupModal'));
+    if (startConvBtn) startConvBtn.addEventListener('click', startNewConversation);
+    if (createGroupSubmitBtn) createGroupSubmitBtn.addEventListener('click', createGroup);
+    if (addInteractionBtn) addInteractionBtn.addEventListener('click', showAddInteractionForm);
+    if (addOpportunityBtn) addOpportunityBtn.addEventListener('click', showAddOpportunityForm);
+    if (startCallBtn) startCallBtn.addEventListener('click', startVideoCall);
+    if (startAudioBtn) startAudioBtn.addEventListener('click', startVideoCall);
+
     if (messageInput) {
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -58,30 +67,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ===== SIDEBAR EVENTS =====
-    const newChatBtn = document.getElementById('newChatBtn');
-    const createGroupBtn = document.getElementById('createGroupBtn');
-    const startConvBtn = document.getElementById('startConvBtn');
-    const createGroupSubmitBtn = document.getElementById('createGroupSubmitBtn');
-    
-    if (newChatBtn) newChatBtn.addEventListener('click', () => openModal('newChatModal'));
-    if (createGroupBtn) createGroupBtn.addEventListener('click', () => openModal('createGroupModal'));
-    if (startConvBtn) startConvBtn.addEventListener('click', startNewConversation);
-    if (createGroupSubmitBtn) createGroupSubmitBtn.addEventListener('click', createGroup);
-
-    // ===== CRM EVENTS =====
-    const addInteractionBtn = document.getElementById('addInteractionBtn');
-    const addOpportunityBtn = document.getElementById('addOpportunityBtn');
-    if (addInteractionBtn) addInteractionBtn.addEventListener('click', showAddInteractionForm);
-    if (addOpportunityBtn) addOpportunityBtn.addEventListener('click', showAddOpportunityForm);
-
-    // Check if already authenticated
-    if (isAuthenticated()) {
+    if (isAuthenticated() && currentUser) {
         initializeApp();
+    } else {
+        if (window.authModal) window.authModal.classList.add('active');
+        if (window.chatApp) window.chatApp.style.display = 'none';
     }
 });
-
-// ===== AUTHENTICATION FUNCTIONS =====
 
 async function handleLogin() {
     const username = document.getElementById('loginUsername').value.trim();
@@ -94,8 +86,9 @@ async function handleLogin() {
     }
 
     try {
-        await AuthAPI.login(username, password);
-        currentUser = username;
+        const authResult = await AuthAPI.login(username, password);
+        currentUser = authResult.user;
+        errorEl.textContent = '';
         initializeApp();
     } catch (error) {
         errorEl.textContent = error.message;
@@ -126,10 +119,11 @@ async function handleRegister() {
     }
 
     try {
-        await AuthAPI.register(username, email, password);
+        const authResult = await AuthAPI.register(username, email, password);
+        currentUser = authResult.user;
         errorEl.textContent = '';
-        showNotification('Registration successful! Please login.', 'success');
-        toggleAuthForm();
+        showNotification('Registration successful', 'success');
+        initializeApp();
     } catch (error) {
         errorEl.textContent = error.message;
         showNotification(error.message, 'error');
@@ -148,46 +142,62 @@ function completeLogout() {
     AuthAPI.logout();
     currentUser = null;
     stompClient = null;
+    usersList = [];
+    groupsList = [];
+    currentConversationId = null;
+    currentConversationType = null;
     if (window.authModal) window.authModal.classList.add('active');
     if (window.chatApp) window.chatApp.style.display = 'none';
-    document.getElementById('loginUsername').value = '';
-    document.getElementById('loginPassword').value = '';
-    document.getElementById('loginError').textContent = '';
+    const loginUsername = document.getElementById('loginUsername');
+    const loginPassword = document.getElementById('loginPassword');
+    const loginError = document.getElementById('loginError');
+    if (loginUsername) loginUsername.value = '';
+    if (loginPassword) loginPassword.value = '';
+    if (loginError) loginError.textContent = '';
     showNotification('Logged out successfully', 'success');
 }
 
-// ===== INITIALIZATION =====
-
 function initializeApp() {
+    if (!currentUser) {
+        completeLogout();
+        return;
+    }
+
     if (window.authModal) window.authModal.classList.remove('active');
     if (window.chatApp) window.chatApp.style.display = 'flex';
-    if (window.currentUserEl) window.currentUserEl.textContent = currentUser;
+    if (window.currentUserEl) window.currentUserEl.textContent = currentUser.username;
+
     connectWebSocket();
     loadUsers();
     loadGroups();
+    UserAPI.updateOnlineStatus(currentUser.id, true).catch(() => {});
 }
 
-// ===== WEBSOCKET CONNECTION =====
-
 function connectWebSocket() {
-    const socket = new SockJS('/api/ws');
+    const socket = new SockJS('/ws/chat');
     stompClient = Stomp.over(socket);
 
     stompClient.connect(
-        { 'Authorization': `Bearer ${getAuthToken()}` },
-        (frame) => {
-            console.log('Connected:', frame);
+        { Authorization: `Bearer ${getAuthToken()}` },
+        () => {
             if (window.userStatusEl) {
                 window.userStatusEl.textContent = 'Online';
                 window.userStatusEl.style.background = '#27ae60';
             }
 
-            stompClient.subscribe(`/user/${currentUser}/messages`, (message) => {
+            stompClient.subscribe(`/chat/private/${currentUser.id}`, (message) => {
                 handleIncomingMessage(JSON.parse(message.body));
             });
 
-            stompClient.subscribe(`/topic/groups`, (message) => {
+            stompClient.subscribe('/group/broadcast', (message) => {
                 handleGroupMessage(JSON.parse(message.body));
+            });
+
+            stompClient.subscribe('/call/signal', (message) => {
+                const payload = JSON.parse(message.body);
+                if (window.CallModule && typeof window.CallModule.handleSignal === 'function') {
+                    window.CallModule.handleSignal(payload);
+                }
             });
         },
         (error) => {
@@ -201,14 +211,9 @@ function connectWebSocket() {
     );
 }
 
-// ===== MESSAGE HANDLING =====
-
 async function sendMessage() {
-    if (!window.messageInput) {
-        showNotification('Message input not available', 'error');
-        return;
-    }
-    
+    if (!window.messageInput) return;
+
     const content = window.messageInput.value.trim();
     if (!content || !currentConversationId) {
         showNotification('Select a conversation first', 'error');
@@ -217,9 +222,19 @@ async function sendMessage() {
 
     try {
         if (currentConversationType === 'user') {
-            await MessageAPI.sendMessage(currentUser, currentConversationId, null, content, 'TEXT');
+            const sentMessage = await MessageAPI.sendPrivateMessage(currentConversationId, content);
+            displayMessage(sentMessage);
         } else if (currentConversationType === 'group') {
-            await MessageAPI.sendMessage(currentUser, null, currentConversationId, content, 'TEXT');
+            if (stompClient && stompClient.connected) {
+                stompClient.send('/app/group/send', {}, JSON.stringify({
+                    sender: { id: currentUser.id, username: currentUser.username },
+                    group: { id: currentConversationId },
+                    content
+                }));
+            } else {
+                showNotification('WebSocket disconnected', 'error');
+                return;
+            }
         }
         window.messageInput.value = '';
     } catch (error) {
@@ -228,31 +243,47 @@ async function sendMessage() {
 }
 
 function handleIncomingMessage(message) {
-    if (message.senderId === currentConversationId || message.receiverId === currentUser) {
+    const senderId = message.sender ? message.sender.id : message.senderId;
+    const receiverId = message.receiver ? message.receiver.id : message.receiverId;
+
+    const isCurrentChat =
+        currentConversationType === 'user' &&
+        ((senderId === currentConversationId && receiverId === currentUser.id) ||
+         (senderId === currentUser.id && receiverId === currentConversationId));
+
+    if (isCurrentChat) {
         displayMessage(message);
+    } else {
+        showNotification('New message received', 'info');
     }
 }
 
 function handleGroupMessage(message) {
-    if (message.groupId === currentConversationId) {
+    const groupId = message.group ? message.group.id : message.groupId;
+    if (currentConversationType === 'group' && groupId === currentConversationId) {
         displayMessage(message);
     }
 }
 
 function displayMessage(message) {
     if (!window.messagesList) return;
-    
-    const messageEl = document.createElement('li');
-    messageEl.className = `message ${message.senderId === currentUser ? 'own' : 'other'}`;
 
-    const time = new Date(message.createdAt).toLocaleTimeString([], {
+    const senderId = message.sender ? message.sender.id : message.senderId;
+    const senderName = message.sender ? message.sender.username : (message.senderUsername || 'Unknown');
+    const timestamp = message.sentAt || message.createdAt || new Date().toISOString();
+
+    const messageEl = document.createElement('li');
+    messageEl.className = `message ${senderId === currentUser.id ? 'own' : 'other'}`;
+
+    const time = new Date(timestamp).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit'
     });
 
     messageEl.innerHTML = `
         <div class="message-bubble">
-            ${escapeHtml(message.content)}
+            <div class="message-sender">${escapeHtml(senderName)}</div>
+            ${escapeHtml(message.content || '')}
             <div class="message-time">${time}</div>
         </div>
     `;
@@ -263,12 +294,12 @@ function displayMessage(message) {
     }
 }
 
-// ===== USER & GROUP MANAGEMENT =====
-
 async function loadUsers() {
     try {
         usersList = await UserAPI.getAllUsers();
+        usersList = usersList.filter((user) => user.id !== currentUser.id);
         renderUsersList();
+        renderUserSelect();
     } catch (error) {
         console.error('Failed to load users:', error);
     }
@@ -276,7 +307,7 @@ async function loadUsers() {
 
 async function loadGroups() {
     try {
-        groupsList = await GroupAPI.getAllGroups();
+        groupsList = await GroupAPI.getMyGroups();
         renderGroupsList();
     } catch (error) {
         console.error('Failed to load groups:', error);
@@ -285,28 +316,41 @@ async function loadGroups() {
 
 function renderUsersList() {
     const usersContainer = document.getElementById('usersList');
+    if (!usersContainer) return;
     usersContainer.innerHTML = '';
 
-    usersList.forEach(user => {
-        if (user.username !== currentUser) {
-            const userEl = document.createElement('div');
-            userEl.className = 'user-item';
-            userEl.innerHTML = `
-                <div class="user-avatar">${user.username[0].toUpperCase()}</div>
-                <span>${user.username}</span>
-                <div class="user-status-indicator ${user.online ? '' : 'offline'}"></div>
-            `;
-            userEl.addEventListener('click', () => selectUser(user));
-            usersContainer.appendChild(userEl);
-        }
+    usersList.forEach((user) => {
+        const userEl = document.createElement('div');
+        userEl.className = 'user-item';
+        userEl.innerHTML = `
+            <div class="user-avatar">${escapeHtml(user.username[0].toUpperCase())}</div>
+            <span>${escapeHtml(user.username)}</span>
+            <div class="user-status-indicator ${user.online ? '' : 'offline'}"></div>
+        `;
+        userEl.addEventListener('click', () => selectUser(user));
+        usersContainer.appendChild(userEl);
+    });
+}
+
+function renderUserSelect() {
+    const selectUser = document.getElementById('selectUser');
+    if (!selectUser) return;
+
+    selectUser.innerHTML = '<option value="">Choose a user...</option>';
+    usersList.forEach((user) => {
+        const option = document.createElement('option');
+        option.value = String(user.id);
+        option.textContent = user.username;
+        selectUser.appendChild(option);
     });
 }
 
 function renderGroupsList() {
     const groupsContainer = document.getElementById('groupsList');
+    if (!groupsContainer) return;
     groupsContainer.innerHTML = '';
 
-    groupsList.forEach(group => {
+    groupsList.forEach((group) => {
         const groupEl = document.createElement('div');
         groupEl.className = 'group-item';
         groupEl.textContent = group.name;
@@ -318,23 +362,21 @@ function renderGroupsList() {
 function selectUser(user) {
     currentConversationId = user.id;
     currentConversationType = 'user';
-    document.getElementById('chatTitle').textContent = user.username;
+    const chatTitle = document.getElementById('chatTitle');
+    if (chatTitle) chatTitle.textContent = user.username;
     loadConversationMessages();
 }
 
 function selectGroup(group) {
     currentConversationId = group.id;
     currentConversationType = 'group';
-    document.getElementById('chatTitle').textContent = group.name;
+    const chatTitle = document.getElementById('chatTitle');
+    if (chatTitle) chatTitle.textContent = group.name;
     loadConversationMessages();
 }
 
 async function loadConversationMessages() {
-    if (!window.messagesList) {
-        console.warn('messagesList not available');
-        return;
-    }
-    
+    if (!window.messagesList) return;
     window.messagesList.innerHTML = '';
 
     try {
@@ -345,28 +387,26 @@ async function loadConversationMessages() {
             messages = await MessageAPI.getGroupMessages(currentConversationId);
         }
 
-        messages.forEach(msg => displayMessage(msg));
+        messages.forEach((message) => displayMessage(message));
     } catch (error) {
-        console.error('Failed to load messages:', error);
+        console.error('Failed to load conversation messages:', error);
     }
 }
 
-// ===== MODAL FUNCTIONS =====
-
 function openModal(modalId) {
-    document.getElementById(modalId).classList.add('active');
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.add('active');
 }
 
 function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.remove('active');
 }
 
 function toggleAuthForm() {
     if (window.loginForm) window.loginForm.classList.toggle('active');
     if (window.registerForm) window.registerForm.classList.toggle('active');
 }
-
-// ===== CONVERSATION MANAGEMENT =====
 
 async function startNewConversation() {
     const userId = document.getElementById('selectUser').value;
@@ -375,7 +415,7 @@ async function startNewConversation() {
         return;
     }
 
-    const user = usersList.find(u => u.id == userId);
+    const user = usersList.find((u) => u.id === Number(userId));
     if (user) {
         selectUser(user);
         closeModal('newChatModal');
@@ -385,31 +425,28 @@ async function startNewConversation() {
 async function createGroup() {
     const name = document.getElementById('groupName').value.trim();
     const description = document.getElementById('groupDescription').value.trim();
-
     if (!name) {
         showNotification('Group name is required', 'error');
         return;
     }
 
     try {
-        await GroupAPI.createGroup(name, description);
-        showNotification('Group created successfully', 'success');
-        loadGroups();
+        const group = await GroupAPI.createGroup(name, description);
+        groupsList.unshift(group);
+        renderGroupsList();
         closeModal('createGroupModal');
         document.getElementById('groupName').value = '';
         document.getElementById('groupDescription').value = '';
+        showNotification('Group created', 'success');
     } catch (error) {
         showNotification(error.message, 'error');
     }
 }
 
-// ===== CRM FUNCTIONS =====
-
 function showSection(sectionName) {
-    document.querySelectorAll('.content-section').forEach(el => {
-        el.classList.remove('active');
-    });
-    document.getElementById(sectionName + 'Section').classList.add('active');
+    document.querySelectorAll('.content-section').forEach((el) => el.classList.remove('active'));
+    const section = document.getElementById(`${sectionName}Section`);
+    if (section) section.classList.add('active');
 
     if (sectionName === 'interactions') {
         loadInteractions();
@@ -420,7 +457,7 @@ function showSection(sectionName) {
 
 async function loadInteractions() {
     try {
-        const interactions = await InteractionAPI.getAllInteractions();
+        const interactions = await InteractionAPI.getUserInteractions(currentUser.id);
         renderInteractions(interactions);
     } catch (error) {
         console.error('Failed to load interactions:', error);
@@ -429,7 +466,7 @@ async function loadInteractions() {
 
 async function loadOpportunities() {
     try {
-        const opportunities = await OpportunityAPI.getAllOpportunities();
+        const opportunities = await OpportunityAPI.getOwnerOpportunities(currentUser.id);
         renderOpportunities(opportunities);
     } catch (error) {
         console.error('Failed to load opportunities:', error);
@@ -438,18 +475,19 @@ async function loadOpportunities() {
 
 function renderInteractions(interactions) {
     const container = document.getElementById('interactionsList');
+    if (!container) return;
     container.innerHTML = '';
 
-    interactions.forEach(interaction => {
+    interactions.forEach((interaction) => {
         const card = document.createElement('div');
         card.className = 'interaction-card';
         card.innerHTML = `
             <div class="card-header">
-                <h3>${escapeHtml(interaction.interactionType)}</h3>
+                <h3>${escapeHtml(interaction.type || 'Interaction')}</h3>
             </div>
             <div class="card-body">
-                <p><strong>Description:</strong> ${escapeHtml(interaction.description)}</p>
-                <p><strong>Date:</strong> ${new Date(interaction.createdAt).toLocaleDateString()}</p>
+                <p><strong>Notes:</strong> ${escapeHtml(interaction.notes || '')}</p>
+                <p><strong>Date:</strong> ${new Date(interaction.interactionDate || interaction.createdAt).toLocaleDateString()}</p>
             </div>
         `;
         container.appendChild(card);
@@ -458,22 +496,25 @@ function renderInteractions(interactions) {
 
 function renderOpportunities(opportunities) {
     const container = document.getElementById('opportunitiesList');
+    if (!container) return;
     container.innerHTML = '';
 
-    opportunities.forEach(opp => {
+    opportunities.forEach((opp) => {
+        const value = typeof opp.value === 'number' ? opp.value : Number(opp.value || 0);
+        const probability = opp.probability || 0;
         const card = document.createElement('div');
         card.className = 'opportunity-card';
         card.innerHTML = `
             <div class="card-header">
-                <h3>${escapeHtml(opp.opportunityName)}</h3>
+                <h3>${escapeHtml(opp.title || 'Opportunity')}</h3>
                 <span style="background: #3498db; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                    ${opp.stage}
+                    ${escapeHtml(opp.stage || 'NEW')}
                 </span>
             </div>
             <div class="card-body">
-                <p><strong>Value:</strong> $${opp.opportunityValue.toFixed(2)}</p>
-                <p><strong>Probability:</strong> ${opp.probability}%</p>
-                <p><strong>Expected Close:</strong> ${new Date(opp.expectedCloseDate).toLocaleDateString()}</p>
+                <p><strong>Value:</strong> $${value.toFixed(2)}</p>
+                <p><strong>Probability:</strong> ${probability}%</p>
+                <p><strong>Expected Close:</strong> ${opp.expectedCloseDate ? new Date(opp.expectedCloseDate).toLocaleDateString() : 'N/A'}</p>
             </div>
         `;
         container.appendChild(card);
@@ -481,55 +522,81 @@ function renderOpportunities(opportunities) {
 }
 
 function showAddInteractionForm() {
-    const description = prompt('Enter interaction details:');
-    if (description) {
-        const type = prompt('Interaction type (Call/Email/Meeting):');
-        if (type) addInteraction(type, description);
+    if (currentConversationType !== 'user' || !currentConversationId) {
+        showNotification('Open a user conversation first', 'error');
+        return;
     }
+
+    const notes = prompt('Enter interaction notes:');
+    if (!notes) return;
+    const type = prompt('Interaction type (CALL/EMAIL/MEETING/DEMO/NOTE):');
+    if (!type) return;
+    addInteraction(type, notes);
 }
 
 function showAddOpportunityForm() {
-    const name = prompt('Opportunity name:');
-    if (name) {
-        const value = prompt('Opportunity value:');
-        if (value) addOpportunity(name, value);
+    if (currentConversationType !== 'user' || !currentConversationId) {
+        showNotification('Open a user conversation first', 'error');
+        return;
     }
+
+    const title = prompt('Opportunity title:');
+    if (!title) return;
+    const value = prompt('Opportunity value:');
+    if (!value) return;
+    addOpportunity(title, value);
 }
 
-async function addInteraction(type, description) {
+async function addInteraction(type, notes) {
     try {
-        await InteractionAPI.createInteraction(currentConversationId, type, description);
-        showNotification('Interaction added successfully', 'success');
+        await InteractionAPI.createInteraction(currentConversationId, currentUser.id, type, notes);
+        showNotification('Interaction added', 'success');
         loadInteractions();
     } catch (error) {
         showNotification(error.message, 'error');
     }
 }
 
-async function addOpportunity(name, value) {
+async function addOpportunity(title, value) {
     try {
-        await OpportunityAPI.createOpportunity(currentConversationId, name, value, 'NEW', 30);
-        showNotification('Opportunity added successfully', 'success');
+        const expectedCloseDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+        await OpportunityAPI.createOpportunity(
+            currentConversationId,
+            currentUser.id,
+            title,
+            Number(value),
+            expectedCloseDate
+        );
+        showNotification('Opportunity added', 'success');
         loadOpportunities();
     } catch (error) {
         showNotification(error.message, 'error');
     }
 }
 
-// ===== UTILITY FUNCTIONS =====
+function startVideoCall() {
+    if (currentConversationType !== 'user' || !currentConversationId) {
+        showNotification('Select a user conversation before starting a call', 'error');
+        return;
+    }
+
+    if (typeof window.CallModule !== 'undefined' && window.CallModule.initiateCall) {
+        showSection('call');
+        window.CallModule.initiateCall(currentConversationId);
+    } else {
+        showNotification('Call module not available', 'error');
+    }
+}
 
 function showNotification(message, type = 'info') {
     if (!window.notification) {
         console.log(`Notification [${type}]: ${message}`);
         return;
     }
-    
     window.notification.textContent = message;
     window.notification.className = `notification show ${type}`;
     setTimeout(() => {
-        if (window.notification) {
-            window.notification.classList.remove('show');
-        }
+        if (window.notification) window.notification.classList.remove('show');
     }, 3000);
 }
 
@@ -538,3 +605,8 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.toggleAuthForm = toggleAuthForm;
+window.showSection = showSection;

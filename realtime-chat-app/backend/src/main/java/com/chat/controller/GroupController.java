@@ -1,6 +1,7 @@
 package com.chat.controller;
 
 import com.chat.model.Group;
+import com.chat.model.User;
 import com.chat.service.GroupService;
 import com.chat.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -88,8 +89,11 @@ public class GroupController {
     }
 
     @PostMapping("/{groupId}/members/{userId}")
-    public ResponseEntity<Void> addMemberToGroup(@PathVariable Long groupId, @PathVariable Long userId) {
+    public ResponseEntity<Void> addMemberToGroup(@PathVariable Long groupId, @PathVariable Long userId, Principal principal) {
         try {
+            if (!canManageMembership(groupId, userId, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             groupService.addMemberToGroup(groupId, userId);
             log.info("User {} added to group: {}", userId, groupId);
             return ResponseEntity.ok().build();
@@ -100,8 +104,11 @@ public class GroupController {
     }
 
     @DeleteMapping("/{groupId}/members/{userId}")
-    public ResponseEntity<Void> removeMemberFromGroup(@PathVariable Long groupId, @PathVariable Long userId) {
+    public ResponseEntity<Void> removeMemberFromGroup(@PathVariable Long groupId, @PathVariable Long userId, Principal principal) {
         try {
+            if (!canManageMembership(groupId, userId, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             groupService.removeMemberFromGroup(groupId, userId);
             log.info("User {} removed from group: {}", userId, groupId);
             return ResponseEntity.ok().build();
@@ -114,8 +121,12 @@ public class GroupController {
     @PutMapping("/{id}")
     public ResponseEntity<Group> updateGroup(
             @PathVariable Long id,
-            @RequestBody Map<String, String> payload) {
+            @RequestBody Map<String, String> payload,
+            Principal principal) {
         try {
+            if (!isGroupCreatorOrAdmin(id, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             Group updatedGroup = groupService.updateGroup(id, payload.get("name"), payload.get("description"));
             log.info("Group updated: {}", id);
             return ResponseEntity.ok(updatedGroup);
@@ -126,8 +137,11 @@ public class GroupController {
     }
 
     @PostMapping("/{id}/archive")
-    public ResponseEntity<Void> archiveGroup(@PathVariable Long id) {
+    public ResponseEntity<Void> archiveGroup(@PathVariable Long id, Principal principal) {
         try {
+            if (!isGroupCreatorOrAdmin(id, principal)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
             groupService.archiveGroup(id);
             log.info("Group archived: {}", id);
             return ResponseEntity.ok().build();
@@ -159,5 +173,26 @@ public class GroupController {
             log.error("Error checking membership: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
+    }
+
+    private boolean canManageMembership(Long groupId, Long targetUserId, Principal principal) {
+        User currentUser = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        boolean isAdmin = currentUser.getRoles().stream()
+                .anyMatch(role -> "ROLE_ADMIN".equals(role.getName()));
+        return isAdmin || currentUser.getId().equals(targetUserId) || isGroupCreator(groupId, currentUser.getId());
+    }
+
+    private boolean isGroupCreatorOrAdmin(Long groupId, Principal principal) {
+        User currentUser = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        boolean isAdmin = currentUser.getRoles().stream()
+                .anyMatch(role -> "ROLE_ADMIN".equals(role.getName()));
+        return isAdmin || isGroupCreator(groupId, currentUser.getId());
+    }
+
+    private boolean isGroupCreator(Long groupId, Long userId) {
+        Group group = groupService.getGroupById(groupId);
+        return group.getCreatedBy() != null && userId.equals(group.getCreatedBy().getId());
     }
 }

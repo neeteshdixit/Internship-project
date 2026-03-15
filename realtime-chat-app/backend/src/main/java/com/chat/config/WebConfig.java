@@ -9,14 +9,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Serve static files from /static/** (not under /api context)
+        // Serve static frontend assets.
         registry.addResourceHandler("/**")
                 .addResourceLocations("classpath:/static/")
                 .setCachePeriod(3600);
-
-        // Serve API-related resources
-        registry.addResourceHandler("/api/**")
-                .addResourceLocations("classpath:/")
-                .setCachePeriod(0);
     }
 }

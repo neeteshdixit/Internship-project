@@ -34,7 +34,7 @@ public class MessageService {
                 .receiver(receiver)
                 .content(content)
                 .messageType("TEXT")
-                .status("SENT")
+                .status("UNREAD")
                 .sentAt(LocalDateTime.now())
                 .build();
 
@@ -50,7 +50,7 @@ public class MessageService {
                 .sender(sender)
                 .content(content)
                 .messageType("TEXT")
-                .status("SENT")
+                .status("UNREAD")
                 .sentAt(LocalDateTime.now())
                 .build();
 
@@ -78,29 +78,40 @@ public class MessageService {
         return messageRepository.findUnreadMessages(userId);
     }
 
-    public void markMessageAsRead(Long messageId) {
+    public void markMessageAsRead(Long messageId, Long userId) {
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
+        if (message.getReceiver() == null || !message.getReceiver().getId().equals(userId)) {
+            throw new RuntimeException("Not allowed to mark this message as read");
+        }
         message.setStatus("READ");
         messageRepository.save(message);
     }
 
-    public Message editMessage(Long messageId, String newContent) {
+    public Message editMessage(Long messageId, Long userId, String newContent) {
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
+        if (!message.getSender().getId().equals(userId)) {
+            throw new RuntimeException("Not allowed to edit this message");
+        }
         message.setContent(newContent);
         message.setEditedAt(LocalDateTime.now());
         log.info("Message edited: {}", messageId);
         return messageRepository.save(message);
     }
 
-    public void deleteMessage(Long messageId) {
+    public void deleteMessage(Long messageId, Long userId) {
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+        if (!message.getSender().getId().equals(userId)) {
+            throw new RuntimeException("Not allowed to delete this message");
+        }
         messageRepository.deleteById(messageId);
         log.info("Message deleted: {}", messageId);
     }
 
-    public List<Message> searchMessages(String keyword) {
-        return messageRepository.searchMessages(keyword);
+    public List<Message> searchMessages(Long userId, String keyword) {
+        return messageRepository.searchMessagesForUser(userId, keyword);
     }
 
     public List<Message> getUserSentMessages(Long userId) {

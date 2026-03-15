@@ -1,5 +1,6 @@
 package com.chat.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
@@ -30,14 +31,17 @@ public class Message {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id", nullable = false)
+    @JsonIgnoreProperties({"password", "roles", "createdBy", "updatedBy"})
     private User sender;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "receiver_id")
+    @JsonIgnoreProperties({"password", "roles", "createdBy", "updatedBy"})
     private User receiver; // For private messages; null for group messages
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id")
+    @JsonIgnoreProperties({"members", "createdBy"})
     private Group group; // For group messages; null for private messages
 
     @CreatedDate
