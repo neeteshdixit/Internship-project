@@ -101,19 +101,19 @@ CREATE TABLE IF NOT EXISTS opportunities (
 );
 
 -- Create Indexes for performance
-CREATE INDEX idx_messages_sender ON messages(sender_id);
-CREATE INDEX idx_messages_receiver ON messages(receiver_id);
-CREATE INDEX idx_messages_group ON messages(group_id);
-CREATE INDEX idx_messages_sent_at ON messages(sent_at);
-CREATE INDEX idx_groups_created_by ON groups(created_by);
-CREATE INDEX idx_interactions_customer ON interactions(customer_id);
-CREATE INDEX idx_interactions_user ON interactions(user_id);
-CREATE INDEX idx_interactions_date ON interactions(interaction_date);
-CREATE INDEX idx_opportunities_customer ON opportunities(customer_id);
-CREATE INDEX idx_opportunities_owner ON opportunities(owner_id);
-CREATE INDEX idx_opportunities_stage ON opportunities(stage);
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
+CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sent_at ON messages(sent_at);
+CREATE INDEX IF NOT EXISTS idx_groups_created_by ON groups(created_by);
+CREATE INDEX IF NOT EXISTS idx_interactions_customer ON interactions(customer_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_user ON interactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_date ON interactions(interaction_date);
+CREATE INDEX IF NOT EXISTS idx_opportunities_customer ON opportunities(customer_id);
+CREATE INDEX IF NOT EXISTS idx_opportunities_owner ON opportunities(owner_id);
+CREATE INDEX IF NOT EXISTS idx_opportunities_stage ON opportunities(stage);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- Insert default roles
 INSERT INTO roles (name, description, active) VALUES 
