@@ -217,6 +217,57 @@ function App() {
     fetchOnlineUsers();
   }, [isAuthenticated, currentUser, isDemoMode]);
 
+  // Fetch registered users list from database
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || isDemoMode) return;
+
+    const fetchRegisteredUsers = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('http://localhost:8081/api/users', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const allUsers = await response.json();
+          // Filter out the current logged-in user from the contact list
+          const otherUsers = allUsers.filter(u => u.username !== currentUser.username);
+
+          // Map users to contacts format
+          const dbContacts = otherUsers.map(u => ({
+            id: u.id,
+            name: u.username,
+            avatar: u.profilePicUrl,
+            statusText: "Offline",
+            isOnline: false,
+            messages: []
+          }));
+
+          // Always add the Ollama AI bot to the list
+          const aiBot = {
+            id: 9999,
+            name: "Ollama AI Assistant",
+            avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=100",
+            statusText: "Active AI Bot",
+            isOnline: true,
+            isAi: true,
+            messages: [
+              { id: 1, text: "Hello! Main local Ollama engine ka assistant hoon. Main aapke chats ko analyze aur summarize kar sakta hoon.", sender: "ai", timestamp: "10:00 AM", status: "read" }
+            ]
+          };
+
+          setContacts([...dbContacts, aiBot]);
+        }
+      } catch (err) {
+        console.error("Failed to load registered users from database:", err);
+      }
+    };
+
+    fetchRegisteredUsers();
+  }, [isAuthenticated, currentUser, isDemoMode]);
+
   // Load chat history from backend REST API
   useEffect(() => {
     if (activeContactId === null || !currentUser || isDemoMode) return;
