@@ -1,1 +1,13 @@
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\controller\AuthController.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\controller\ChatController.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\dto\AuthRequest.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\dto\AuthResponse.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\dto\RegisterRequest.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\model\User.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\repo\UserRepository.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\security\ApplicationConfig.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\security\JwtAuthenticationFilter.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\security\JwtService.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\security\SecurityConfig.java
+D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\service\AuthService.java
 D:\chat project\Internship-project\realtime-chat-app\backend\src\main\java\com\whatsappclone\WhatsappCloneBackendApplication.java

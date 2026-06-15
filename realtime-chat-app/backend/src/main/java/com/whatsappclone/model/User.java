@@ -3,7 +3,12 @@ package com.whatsappclone.model;
 // JPA annotations import kiye hain (jakarta.persistence se)
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Collections;
 
 // 1. @Entity: Hibernate ko batata hai ki yeh ek Database Table ke sath map hoga.
 @Entity
@@ -14,7 +19,7 @@ import java.time.LocalDateTime;
 @Builder                 // Design Pattern dynamic object creation ke liye: User.builder().username("test").build()
 @NoArgsConstructor      // Default constructor (JPA iske bina DB se data fetch nahi kar paega)
 @AllArgsConstructor     // All fields constructor (Builder pattern ke liye mandatory hai)
-public class User {
+public class User implements UserDetails {
 
     // 4. @Id: Is field ko Table ka Primary Key banane ke liye.
     @Id
@@ -45,5 +50,45 @@ public class User {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         lastSeen = LocalDateTime.now();
+    }
+
+    // ==========================================
+    // SPRING SECURITY USERDETAILS CONTRACT METHODS
+    // ==========================================
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        // Hum simple default role "ROLE_USER" provide kar rahe hain sabhi registered users ko.
+        return Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
+    }
+
+    @Override
+    public String getPassword() {
+        return password; // DB se fetched hashed password return karega
+    }
+
+    @Override
+    public String getUsername() {
+        return username; // Authentication ID (username) return karega
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true; // Account expire nahi hua hai
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true; // Account locked nahi hai
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true; // Password/Credentials expire nahi hue hain
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true; // Account disabled nahi hai (Active hai)
     }
 }

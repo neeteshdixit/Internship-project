@@ -54,6 +54,31 @@
 			<artifactId>spring-boot-starter-websocket</artifactId>
 		</dependency>
 
+		<!-- Spring AI Ollama Starter: Local AI models connection ke liye -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+		</dependency>
+
+		<!-- JWT for token auth: JSON Web Token generation & decoding APIs -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>0.11.5</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+
 		<!-- PostgreSQL Driver: Java and Postgres DB connection connector -->
 		<dependency>
 			<groupId>org.postgresql</groupId>
@@ -81,7 +106,20 @@
 		</dependency>
 	</dependencies>
 
-	<!-- 4. PLUGINS: Build and compile steps control configuration -->
+	<!-- 4. DEPENDENCY MANAGEMENT: Spring AI dependencies version sync ke liye BOM register karenge -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>1.0.0-M1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<!-- 5. PLUGINS: Build and compile steps control configuration -->
 	<build>
 		<plugins>
 			<!-- Plugin jo Spring Boot app ko run aur jar packages generate karne mein use hoga -->
@@ -99,5 +137,17 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<!-- 6. REPOSITORIES: Spring AI milestones standard maven central par available nahi hain, isliye custom spring repo configure karenge -->
+	<repositories>
+		<repository>
+			<id>spring-milestones</id>
+			<name>Spring Milestones</name>
+			<url>https://repo.spring.io/milestone</url>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
 
 </project>
