@@ -12,6 +12,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.whatsappclone.exception.UserAlreadyExistsException;
+
 // @Service: Spring Service class
 @Service
 @RequiredArgsConstructor
@@ -26,10 +28,10 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
         // Validation check for duplicates
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new IllegalArgumentException("Username is already taken");
+            throw new UserAlreadyExistsException("Username is already taken");
         }
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("Email is already registered");
+            throw new UserAlreadyExistsException("Email is already registered");
         }
 
         // Hashing password and mapping request DTO to database User Entity.
