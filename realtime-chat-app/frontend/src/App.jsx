@@ -14,37 +14,11 @@ import {
 } from 'lucide-react';
 import './App.css';
 
-// TypeScript Interfaces for type safety
-interface UserProfile {
-  id?: number;
-  username: string;
-  email?: string;
-  profilePicUrl?: string;
-}
-
-interface Message {
-  id: number;
-  text: string;
-  sender: 'me' | 'other' | 'ai';
-  timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
-}
-
-interface Contact {
-  id: number;
-  name: string;
-  avatar: string;
-  statusText: string;
-  isOnline: boolean;
-  isAi?: boolean;
-  messages: Message[];
-}
-
 function App() {
-  // --- STATE SYSTEM ---
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  // --- STATE SYSTEM (Pure JavaScript) ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [currentUser, setCurrentUser] = useState(null);
   
   // Auth Form Fields
   const [usernameInput, setUsernameInput] = useState('');
@@ -53,10 +27,10 @@ function App() {
   const [profilePicInput, setProfilePicInput] = useState('');
   
   // App UI Helpers
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [themeMode, setThemeMode] = useState<'dark' | 'light'>('dark');
+  const [themeMode, setThemeMode] = useState('dark');
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
   
@@ -66,8 +40,8 @@ function App() {
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   // Active chat state
-  const [activeContactId, setActiveContactId] = useState<number | null>(null);
-  const [contacts, setContacts] = useState<Contact[]>([
+  const [activeContactId, setActiveContactId] = useState(null);
+  const [contacts, setContacts] = useState([
     {
       id: 1,
       name: "Rahul Sharma",
@@ -106,7 +80,7 @@ function App() {
   ]);
 
   // Ref to automatically scroll to bottom of chat
-  const messageEndRef = useRef<HTMLDivElement>(null);
+  const messageEndRef = useRef(null);
 
   useEffect(() => {
     // Check if token exists in localStorage to auto-login
@@ -136,7 +110,7 @@ function App() {
   };
 
   // --- HANDLERS FOR AUTHENTICATION API ---
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg(null);
     setIsLoading(true);
@@ -167,7 +141,7 @@ function App() {
       
       // Save Token and Profile
       localStorage.setItem('token', data.token);
-      const profile: UserProfile = {
+      const profile = {
         id: data.id,
         username: data.username,
         email: data.email,
@@ -178,14 +152,14 @@ function App() {
       setCurrentUser(profile);
       setIsAuthenticated(true);
       setIsDemoMode(false);
-    } catch (err: any) {
+    } catch (err) {
       console.warn("Backend unavailable, falling back to Demo Mode", err);
       // Demo Mode Activation (For client offline review)
       setIsDemoMode(true);
       setErrorMsg("Backend unavailable! Starting in Local Demo Offline Mode for testing UI.");
       
       setTimeout(() => {
-        const mockProfile: UserProfile = {
+        const mockProfile = {
           username: usernameInput || "GuestStudent",
           email: emailInput || "guest@test.com",
           profilePicUrl: profilePicInput || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
@@ -211,7 +185,7 @@ function App() {
   const handleSendMessage = () => {
     if (!messageInput.trim() || activeContactId === null) return;
 
-    const newMessage: Message = {
+    const newMessage = {
       id: Date.now(),
       text: messageInput,
       sender: 'me',
@@ -227,7 +201,7 @@ function App() {
         // If sending to AI, trigger auto-reply simulation
         if (contact.isAi) {
           setTimeout(() => {
-            const aiReply: Message = {
+            const aiReply = {
               id: Date.now() + 1,
               text: `Mainne aapka ye message padha: "${messageInput}". Main aapki is chat stream ko Ollama Phi-3 AI se summarize karne ke liye ready hoon. Header mein diye 'Summarize' button par click karein!`,
               sender: 'ai',
