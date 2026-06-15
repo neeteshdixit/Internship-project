@@ -13,6 +13,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import './App.css';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
 
 function App() {
   // --- STATE SYSTEM (Pure JavaScript) ---
@@ -81,6 +83,7 @@ function App() {
 
   // Ref to automatically scroll to bottom of chat
   const messageEndRef = useRef(null);
+  const stompClientRef = useRef(null);
 
   useEffect(() => {
     // Check if token exists in localStorage to auto-login
@@ -96,6 +99,164 @@ function App() {
     // Scroll chat window to bottom on new message
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeContactId, contacts]);
+
+  // WebSocket Connection Hook
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || isDemoMode) return;
+
+    const socket = new SockJS('http://localhost:8081/ws');
+    const client = new Client({
+      webSocketFactory: () => socket,
+      debug: (str) => console.log(str),
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+    });
+
+    client.onConnect = (frame) => {
+      console.log('Connected to WebSocket server:', frame);
+      
+      // Register presence on backend
+      client.publish({
+        destination: '/app/presence/connect',
+        body: currentUser.username
+      });
+
+      // Subscribe to presence updates
+      client.subscribe('/topic/presence', (message) => {
+        const update = JSON.parse(message.body);
+        setContacts(prev => prev.map(contact => {
+          if (contact.name === update.username) {
+            return {
+              ...contact,
+              isOnline: update.isOnline,
+              statusText: update.isOnline ? 'Online' : 'Offline'
+            };
+          }
+          return contact;
+        }));
+      });
+
+      // Subscribe to receive real-time messages
+      client.subscribe(`/topic/messages/${currentUser.username}`, (message) => {
+        const received = JSON.parse(message.body);
+        
+        const formatted = {
+          id: received.id,
+          text: received.content,
+          sender: received.senderUsername === currentUser.username ? 'me' : 'other',
+          timestamp: new Date(received.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: received.status
+        };
+
+        setContacts(prev => prev.map(contact => {
+          const targetContactName = received.senderUsername === currentUser.username 
+            ? received.receiverUsername 
+            : received.senderUsername;
+
+          if (contact.name === targetContactName) {
+            // Deduplicate messages
+            if (contact.messages.some(m => m.id === formatted.id)) {
+              return contact;
+            }
+            return {
+              ...contact,
+              messages: [...contact.messages, formatted]
+            };
+          }
+          return contact;
+        }));
+      });
+    };
+
+    client.onStompError = (error) => {
+      console.error('STOMP protocol error:', error);
+    };
+
+    client.activate();
+    stompClientRef.current = client;
+
+    return () => {
+      if (stompClientRef.current) {
+        stompClientRef.current.deactivate();
+      }
+    };
+  }, [isAuthenticated, currentUser, isDemoMode]);
+
+  // Load initial online status list from backend
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || isDemoMode) return;
+
+    const fetchOnlineUsers = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('http://localhost:8081/api/users/online', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const onlineUsernames = await response.json();
+          setContacts(prev => prev.map(contact => {
+            if (onlineUsernames.includes(contact.name)) {
+              return {
+                ...contact,
+                isOnline: true,
+                statusText: 'Online'
+              };
+            }
+            return contact;
+          }));
+        }
+      } catch (err) {
+        console.error("Error loading online users:", err);
+      }
+    };
+
+    fetchOnlineUsers();
+  }, [isAuthenticated, currentUser, isDemoMode]);
+
+  // Load chat history from backend REST API
+  useEffect(() => {
+    if (activeContactId === null || !currentUser || isDemoMode) return;
+
+    const activeContact = contacts.find(c => c.id === activeContactId);
+    if (!activeContact || activeContact.isAi) return;
+
+    const loadHistory = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:8081/api/messages/${currentUser.username}/${activeContact.name}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const formatted = data.map(msg => ({
+            id: msg.id,
+            text: msg.content,
+            sender: msg.senderUsername === currentUser.username ? 'me' : 'other',
+            timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            status: msg.status
+          }));
+
+          setContacts(prev => prev.map(c => {
+            if (c.id === activeContactId) {
+              return { ...c, messages: formatted };
+            }
+            return c;
+          }));
+        }
+      } catch (err) {
+        console.error("Error loading chat history:", err);
+      }
+    };
+
+    loadHistory();
+  }, [activeContactId, isDemoMode]);
 
   // Toggle Dark/Light Theme
   const toggleTheme = () => {
@@ -174,6 +335,9 @@ function App() {
   };
 
   const handleLogout = () => {
+    if (stompClientRef.current) {
+      stompClientRef.current.deactivate();
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setIsAuthenticated(false);
@@ -185,48 +349,71 @@ function App() {
   const handleSendMessage = () => {
     if (!messageInput.trim() || activeContactId === null) return;
 
-    const newMessage = {
-      id: Date.now(),
-      text: messageInput,
-      sender: 'me',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'sent'
-    };
+    const activeContact = contacts.find(c => c.id === activeContactId);
+    if (!activeContact) return;
 
-    // Update contacts state with the new message
-    setContacts(prev => prev.map(contact => {
-      if (contact.id === activeContactId) {
-        const updatedMsgs = [...contact.messages, newMessage];
-        
-        // If sending to AI, trigger auto-reply simulation
-        if (contact.isAi) {
-          setTimeout(() => {
-            const aiReply = {
-              id: Date.now() + 1,
-              text: `Mainne aapka ye message padha: "${messageInput}". Main aapki is chat stream ko Ollama Phi-3 AI se summarize karne ke liye ready hoon. Header mein diye 'Summarize' button par click karein!`,
-              sender: 'ai',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              status: 'read'
-            };
-            setContacts(curr => curr.map(c => {
-              if (c.id === contact.id) {
-                return { ...c, messages: [...updatedMsgs, aiReply] };
-              }
-              return c;
-            }));
-          }, 1200);
+    // If Offline Demo Mode or AI bot, use client side simulation
+    if (isDemoMode || activeContact.isAi) {
+      const newMessage = {
+        id: Date.now(),
+        text: messageInput,
+        sender: 'me',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'sent'
+      };
+
+      setContacts(prev => prev.map(contact => {
+        if (contact.id === activeContactId) {
+          const updatedMsgs = [...contact.messages, newMessage];
+          
+          if (contact.isAi) {
+            setTimeout(() => {
+              const aiReply = {
+                id: Date.now() + 1,
+                text: `Mainne aapka ye message padha: "${messageInput}". Main aapki is chat stream ko Ollama Phi-3 AI se summarize karne ke liye ready hoon. Header mein diye 'Summarize' button par click karein!`,
+                sender: 'ai',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                status: 'read'
+              };
+              setContacts(curr => curr.map(c => {
+                if (c.id === contact.id) {
+                  return { ...c, messages: [...updatedMsgs, aiReply] };
+                }
+                return c;
+              }));
+            }, 1200);
+          }
+
+          return { ...contact, messages: updatedMsgs };
         }
+        return contact;
+      }));
 
-        return { ...contact, messages: updatedMsgs };
-      }
-      return contact;
-    }));
+      setMessageInput('');
+      return;
+    }
 
-    setMessageInput('');
+    // Live WebSocket Messaging
+    if (stompClientRef.current && stompClientRef.current.connected) {
+      const payload = {
+        senderUsername: currentUser.username,
+        receiverUsername: activeContact.name,
+        content: messageInput
+      };
+
+      stompClientRef.current.publish({
+        destination: '/app/chat',
+        body: JSON.stringify(payload)
+      });
+
+      setMessageInput('');
+    } else {
+      console.warn("WebSocket not connected!");
+    }
   };
 
   // --- AI TRANSIENT SUMMARIZATION (Ollama) ---
-  const triggerAiSummarize = () => {
+  const triggerAiSummarize = async () => {
     if (activeContactId === null) return;
     const activeContact = contacts.find(c => c.id === activeContactId);
     if (!activeContact) return;
@@ -234,20 +421,43 @@ function App() {
     setIsAiLoading(true);
     setShowSummaryModal(true);
 
-    // AI summary mock simulation reading active messages context
-    setTimeout(() => {
-      // Generates bullets out of messages content
-      const generatedSummary = `
-✨ **Ollama AI Conversation Insights** (Model: Phi-3)
+    if (isDemoMode || activeContact.isAi) {
+      // Offline simulation for mock contacts or demo mode
+      setTimeout(() => {
+        const generatedSummary = `
+✨ **Ollama AI Conversation Insights** (Model: Phi-3 [Offline Demo])
 --------------------------------------------------
 • **Topic:** Project status discussion and JWT validation integration.
 • **Key Updates:** User successfully integrated Spring Security and JWT signature checks on port 8081.
 • **Current Action Items:** Working on setting up WebSocket configurations for real-time messaging pipeline.
 • **AI Recommendation:** Ensure token refresh mechanisms are designed prior to React deployment.
-      `;
-      setAiSummaryText(generatedSummary);
+        `;
+        setAiSummaryText(generatedSummary);
+        setIsAiLoading(false);
+      }, 1500);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/ai/summarize/${currentUser.username}/${activeContact.name}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const text = await response.text();
+        setAiSummaryText(text);
+      } else {
+        const errorText = await response.text();
+        setAiSummaryText(`Failed to retrieve summary from Ollama: ${errorText}`);
+      }
+    } catch (err) {
+      setAiSummaryText(`Failed to connect to local Ollama summarizer engine. Make sure the backend server is running and local Ollama is active (run: 'ollama run phi3' in terminal). Details: ${err.message}`);
+    } finally {
       setIsAiLoading(false);
-    }, 1500);
+    }
   };
 
   const activeContact = contacts.find(c => c.id === activeContactId);

@@ -1,0 +1,4 @@
+target/
+*.class
+logs.txt
+logs_utf8.txt
