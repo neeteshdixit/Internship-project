@@ -10,7 +10,12 @@ import {
   Lock, 
   Sun, 
   Moon, 
-  AlertCircle
+  AlertCircle,
+  Phone,
+  Video,
+  PhoneOff,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import './App.css';
 import SockJS from 'sockjs-client';
@@ -25,6 +30,7 @@ function App() {
   // Auth Form Fields
   const [usernameInput, setUsernameInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [profilePicInput, setProfilePicInput] = useState('');
   
@@ -34,7 +40,38 @@ function App() {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [themeMode, setThemeMode] = useState('dark');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchError, setSearchError] = useState(null);
   const [messageInput, setMessageInput] = useState('');
+  
+  // Audio/Video Call System State
+  const [activeCall, setActiveCall] = useState(null); // 'audio' | 'video' | null
+  const [callStatus, setCallStatus] = useState('ringing'); // 'ringing' | 'connected' | 'ended'
+  const [micMuted, setMicMuted] = useState(false);
+  
+  // Status story states
+  const [sidebarTab, setSidebarTab] = useState('chats');
+  const [myStatus, setMyStatus] = useState(null);
+  const [statuses, setStatuses] = useState([
+    {
+      id: 1,
+      name: "Rahul Sharma",
+      avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=100",
+      time: "Just now",
+      image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=300",
+      caption: "Coding all night long! 💻🚀"
+    },
+    {
+      id: 2,
+      name: "Priya Patel",
+      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100",
+      time: "45 minutes ago",
+      image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=300",
+      caption: "Beautiful sunset view! 🌅"
+    }
+  ]);
+  const [viewingStatus, setViewingStatus] = useState(null);
+  const [newStatusCaption, setNewStatusCaption] = useState('');
+  const [newStatusImg, setNewStatusImg] = useState('');
   
   // AI summary modal states
   const [showSummaryModal, setShowSummaryModal] = useState(false);
@@ -217,29 +254,28 @@ function App() {
     fetchOnlineUsers();
   }, [isAuthenticated, currentUser, isDemoMode]);
 
-  // Fetch registered users list from database
+  // Fetch active chat partners list from database
   useEffect(() => {
     if (!isAuthenticated || !currentUser || isDemoMode) return;
 
-    const fetchRegisteredUsers = async () => {
+    const fetchChatPartners = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:8081/api/users', {
+        const response = await fetch(`http://localhost:8081/api/messages/partners/${currentUser.username}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
 
         if (response.ok) {
-          const allUsers = await response.json();
-          // Filter out the current logged-in user from the contact list
-          const otherUsers = allUsers.filter(u => u.username !== currentUser.username);
+          const partners = await response.json();
 
           // Map users to contacts format
-          const dbContacts = otherUsers.map(u => ({
+          const dbContacts = partners.map(u => ({
             id: u.id,
             name: u.username,
             avatar: u.profilePicUrl,
+            phoneNumber: u.phoneNumber,
             statusText: "Offline",
             isOnline: false,
             messages: []
@@ -261,11 +297,11 @@ function App() {
           setContacts([...dbContacts, aiBot]);
         }
       } catch (err) {
-        console.error("Failed to load registered users from database:", err);
+        console.error("Failed to load chat partners from database:", err);
       }
     };
 
-    fetchRegisteredUsers();
+    fetchChatPartners();
   }, [isAuthenticated, currentUser, isDemoMode]);
 
   // Load chat history from backend REST API
@@ -321,6 +357,123 @@ function App() {
     }
   };
 
+  // --- AUDIO/VIDEO CALL SIMULATION HANDLERS ---
+  const startCall = (type) => {
+    setActiveCall(type);
+    setCallStatus('ringing');
+    setMicMuted(false);
+    
+    // Simulate other user picking up after 2.5s
+    setTimeout(() => {
+      setCallStatus('connected');
+    }, 2500);
+  };
+
+  const endCall = () => {
+    setCallStatus('ended');
+    setTimeout(() => {
+      setActiveCall(null);
+    }, 1000);
+  };
+
+  // --- POST STATUS/STORY HANDLER ---
+  const handlePostStatus = (e) => {
+    e.preventDefault();
+    if (!newStatusCaption.trim()) return;
+
+    const newStory = {
+      id: Date.now(),
+      name: currentUser?.username || "Guest",
+      avatar: currentUser?.profilePicUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100",
+      time: "Just now",
+      image: newStatusImg.trim() || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=300",
+      caption: newStatusCaption
+    };
+
+    setMyStatus(newStory);
+    setNewStatusCaption('');
+    setNewStatusImg('');
+  };
+
+  // --- CONTACT SEARCH BY PHONE NUMBER ---
+  const handleSearchContact = async (e) => {
+    e.preventDefault();
+    setSearchError(null);
+
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    // Check if the contact is already in contacts list (either by name or by phone number)
+    const existing = contacts.find(c => c.name.toLowerCase() === query.toLowerCase() || c.phoneNumber === query);
+    if (existing) {
+      setActiveContactId(existing.id);
+      setSearchQuery('');
+      return;
+    }
+
+    if (isDemoMode) {
+      // Demo Mode: Mock finding user if it looks like a valid phone number (e.g. digits)
+      if (/^\d+$/.test(query)) {
+        const mockNewContact = {
+          id: Date.now(),
+          name: `User_${query.slice(-4)}`,
+          phoneNumber: query,
+          avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100`,
+          statusText: "Offline",
+          isOnline: false,
+          messages: []
+        };
+        setContacts(prev => [mockNewContact, ...prev]);
+        setActiveContactId(mockNewContact.id);
+        setSearchQuery('');
+      } else {
+        setSearchError("not available here this user");
+      }
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8081/api/users/search?phoneNumber=${encodeURIComponent(query)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const foundUser = await response.json();
+        
+        if (foundUser.username === currentUser.username) {
+          setSearchError("You cannot search yourself!");
+          return;
+        }
+
+        const alreadyExists = contacts.find(c => c.id === foundUser.id);
+        if (!alreadyExists) {
+          const newContact = {
+            id: foundUser.id,
+            name: foundUser.username,
+            phoneNumber: query,
+            avatar: foundUser.profilePicUrl,
+            statusText: "Offline",
+            isOnline: false,
+            messages: []
+          };
+          setContacts(prev => [newContact, ...prev]);
+          setActiveContactId(newContact.id);
+        } else {
+          setActiveContactId(foundUser.id);
+        }
+        setSearchQuery('');
+      } else {
+        setSearchError("not available here this user");
+      }
+    } catch (err) {
+      console.error("Error searching user:", err);
+      setSearchError("not available here this user");
+    }
+  };
+
   // --- HANDLERS FOR AUTHENTICATION API ---
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -333,7 +486,7 @@ function App() {
 
     const payload = authMode === 'login' 
       ? { username: usernameInput, password: passwordInput }
-      : { username: usernameInput, email: emailInput, password: passwordInput, profilePicUrl: profilePicInput };
+      : { username: usernameInput, email: emailInput, phoneNumber: phoneInput, password: passwordInput, profilePicUrl: profilePicInput };
 
     try {
       const response = await fetch(`${baseUrl}/${endpoint}`, {
@@ -357,6 +510,7 @@ function App() {
         id: data.id,
         username: data.username,
         email: data.email,
+        phoneNumber: data.phoneNumber,
         profilePicUrl: data.profilePicUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
       };
       localStorage.setItem('user', JSON.stringify(profile));
@@ -374,6 +528,7 @@ function App() {
         const mockProfile = {
           username: usernameInput || "GuestStudent",
           email: emailInput || "guest@test.com",
+          phoneNumber: phoneInput || "9876543210",
           profilePicUrl: profilePicInput || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
         };
         setCurrentUser(mockProfile);
@@ -560,6 +715,16 @@ function App() {
                   />
                 </div>
                 <div className="input-group">
+                  <label>Phone Number</label>
+                  <input 
+                    type="tel" 
+                    required 
+                    value={phoneInput} 
+                    onChange={e => setPhoneInput(e.target.value)} 
+                    placeholder="9876543210"
+                  />
+                </div>
+                <div className="input-group">
                   <label>Profile Picture URL (Optional)</label>
                   <input 
                     type="url" 
@@ -625,40 +790,128 @@ function App() {
             </div>
 
             <div className="search-container">
-              <div className="search-box">
+              <form onSubmit={handleSearchContact} className="search-box" style={{ width: '100%', display: 'flex', alignItems: 'center' }}>
                 <Search size={16} style={{ color: 'var(--text-muted)' }} />
                 <input 
                   type="text" 
-                  placeholder="Chat or user search..." 
+                  placeholder="Search Phone Number + Enter..." 
                   value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
+                  onChange={e => {
+                    setSearchQuery(e.target.value);
+                    if (searchError) setSearchError(null);
+                  }}
+                  style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-primary)', marginLeft: '8px' }}
                 />
+              </form>
+            </div>
+            {searchError && (
+              <div className="search-error-banner" style={{ color: '#ef4444', fontSize: '12.5px', padding: '6px 12px', textAlign: 'center', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', margin: '4px 12px 0 12px', fontWeight: '500' }}>
+                {searchError}
               </div>
+            )}
+
+            {/* Sidebar View Selector: Chats vs Status */}
+            <div className="sidebar-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', margin: '8px 12px' }}>
+              <button 
+                onClick={() => setSidebarTab('chats')} 
+                style={{ flex: 1, padding: '10px', background: 'transparent', border: 'none', borderBottom: sidebarTab === 'chats' ? '2.5px solid var(--primary)' : 'none', color: sidebarTab === 'chats' ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', outline: 'none' }}
+              >
+                Chats
+              </button>
+              <button 
+                onClick={() => setSidebarTab('status')} 
+                style={{ flex: 1, padding: '10px', background: 'transparent', border: 'none', borderBottom: sidebarTab === 'status' ? '2.5px solid var(--primary)' : 'none', color: sidebarTab === 'status' ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', outline: 'none' }}
+              >
+                Status
+              </button>
             </div>
 
-            <div className="contact-list">
-              {filteredContacts.map(contact => (
-                <div 
-                  key={contact.id} 
-                  className={`contact-card ${activeContactId === contact.id ? 'active' : ''}`}
-                  onClick={() => setActiveContactId(contact.id)}
-                >
-                  <img src={contact.avatar} alt={contact.name} className="avatar" />
-                  {contact.isOnline && <div className="online-badge"></div>}
-                  <div className="contact-details">
-                    <div className="contact-top-row">
-                      <span className="contact-name">{contact.name}</span>
-                      <span className="contact-time">
-                        {contact.messages.length > 0 ? contact.messages[contact.messages.length - 1].timestamp : ''}
-                      </span>
-                    </div>
-                    <div className="contact-msg">
-                      {contact.messages.length > 0 ? contact.messages[contact.messages.length - 1].text : 'No messages yet'}
+            {sidebarTab === 'chats' ? (
+              <div className="contact-list">
+                {filteredContacts.map(contact => (
+                  <div 
+                    key={contact.id} 
+                    className={`contact-card ${activeContactId === contact.id ? 'active' : ''}`}
+                    onClick={() => setActiveContactId(contact.id)}
+                  >
+                    <img src={contact.avatar} alt={contact.name} className="avatar" />
+                    {contact.isOnline && <div className="online-badge"></div>}
+                    <div className="contact-details">
+                      <div className="contact-top-row">
+                        <span className="contact-name">{contact.name}</span>
+                        <span className="contact-time">
+                          {contact.messages.length > 0 ? contact.messages[contact.messages.length - 1].timestamp : ''}
+                        </span>
+                      </div>
+                      <div className="contact-msg">
+                        {contact.messages.length > 0 ? contact.messages[contact.messages.length - 1].text : 'No messages yet'}
+                      </div>
                     </div>
                   </div>
+                ))}
+              </div>
+            ) : (
+              <div className="status-section" style={{ padding: '0 12px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1 }}>
+                {/* Post Status form */}
+                <form onSubmit={handlePostStatus} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Share a status update</div>
+                  <input 
+                    type="text" 
+                    placeholder="What's on your mind?..." 
+                    value={newStatusCaption} 
+                    onChange={e => setNewStatusCaption(e.target.value)}
+                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '6px 8px', color: 'var(--text-primary)', fontSize: '12.5px', outline: 'none' }}
+                  />
+                  <input 
+                    type="url" 
+                    placeholder="Status Image URL (optional)..." 
+                    value={newStatusImg} 
+                    onChange={e => setNewStatusImg(e.target.value)}
+                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '6px 8px', color: 'var(--text-primary)', fontSize: '12.5px', outline: 'none' }}
+                  />
+                  <button type="submit" style={{ backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    Post Status
+                  </button>
+                </form>
+
+                {/* My Status */}
+                {myStatus && (
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>My Status</div>
+                    <div 
+                      className="contact-card" 
+                      onClick={() => setViewingStatus(myStatus)}
+                      style={{ cursor: 'pointer', padding: '8px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                    >
+                      <img src={myStatus.avatar} alt="my avatar" className="avatar" style={{ border: '2px solid var(--primary)', padding: '2px' }} />
+                      <div className="contact-details">
+                        <div className="contact-name">{myStatus.name}</div>
+                        <div className="contact-msg">{myStatus.time}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Other Statuses */}
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>Recent Updates</div>
+                  {statuses.map(st => (
+                    <div 
+                      key={st.id} 
+                      className="contact-card" 
+                      onClick={() => setViewingStatus(st)}
+                      style={{ cursor: 'pointer', padding: '8px', borderRadius: '8px', marginBottom: '8px', display: 'flex', alignItems: 'center' }}
+                    >
+                      <img src={st.avatar} alt={st.name} className="avatar" style={{ border: '2px solid var(--primary)', padding: '2px' }} />
+                      <div className="contact-details">
+                        <div className="contact-name">{st.name}</div>
+                        <div className="contact-msg">{st.time}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Active Chat Windows Area */}
@@ -673,7 +926,17 @@ function App() {
                       <div className="user-info-sub">{activeContact.statusText}</div>
                     </div>
                   </div>
-                  <div className="chat-actions">
+                  <div className="chat-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {!activeContact.isAi && (
+                      <>
+                        <button className="action-btn" title="Voice Call" onClick={() => startCall('audio')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '50%', color: 'var(--primary)' }}>
+                          <Phone size={18} />
+                        </button>
+                        <button className="action-btn" title="Video Call" onClick={() => startCall('video')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '50%', color: 'var(--primary)' }}>
+                          <Video size={18} />
+                        </button>
+                      </>
+                    )}
                     <button className="ai-summary-pill" onClick={triggerAiSummarize}>
                       <Sparkles size={14} />
                       Ollama Summarize
@@ -754,6 +1017,73 @@ function App() {
                   >
                     Done
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Calling Modal Overlay */}
+            {activeCall && (
+              <div className="modal-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.85)', zIndex: 1000 }}>
+                <div className="modal-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px', maxWidth: '340px', textAlign: 'center', borderRadius: '16px', background: 'rgba(20, 20, 20, 0.95)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)' }}>
+                  <img src={activeContact.avatar} alt={activeContact.name} className="avatar animate-pulse" style={{ width: '80px', height: '80px', borderRadius: '50%', marginBottom: '16px', border: '3px solid var(--primary)' }} />
+                  <style>{`
+                    .animate-pulse {
+                      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+                    }
+                    @keyframes pulse {
+                      0%, 100% { opacity: 1; transform: scale(1); }
+                      50% { opacity: .7; transform: scale(1.05); }
+                    }
+                  `}</style>
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: 'white' }}>{activeContact.name}</h3>
+                  <div style={{ textTransform: 'capitalize', color: 'var(--text-muted)', fontSize: '14px', marginBottom: '32px' }}>
+                    {activeCall} call • <span style={{ color: callStatus === 'connected' ? 'var(--primary)' : 'var(--text-muted)' }}>{callStatus}...</span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                    <button 
+                      onClick={() => setMicMuted(!micMuted)} 
+                      style={{ background: micMuted ? 'var(--primary)' : 'rgba(255, 255, 255, 0.1)', border: 'none', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }}
+                      title={micMuted ? "Unmute Mic" : "Mute Mic"}
+                    >
+                      {micMuted ? <MicOff size={20} /> : <Mic size={20} />}
+                    </button>
+                    
+                    <button 
+                      onClick={endCall} 
+                      style={{ background: '#ef4444', border: 'none', borderRadius: '50%', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }}
+                      title="Decline / End Call"
+                    >
+                      <PhoneOff size={24} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Status Story Viewing Modal Overlay */}
+            {viewingStatus && (
+              <div className="modal-overlay" onClick={() => setViewingStatus(null)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 1000, cursor: 'pointer' }}>
+                <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '0', maxWidth: '420px', width: '90%', borderRadius: '16px', overflow: 'hidden', background: 'black', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                  {/* Status header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px', background: 'rgba(0,0,0,0.5)', position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+                    <img src={viewingStatus.avatar} alt="avatar" className="avatar" style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14.5px' }}>{viewingStatus.name}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11.5px' }}>{viewingStatus.time}</div>
+                    </div>
+                    <button onClick={() => setViewingStatus(null)} style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>×</button>
+                  </div>
+
+                  {/* Status image */}
+                  <div style={{ position: 'relative', width: '100%', height: '450px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111' }}>
+                    <img src={viewingStatus.image} alt="status story" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                  </div>
+
+                  {/* Status Caption */}
+                  <div style={{ padding: '20px', color: 'white', fontSize: '15px', textAlign: 'center', background: 'rgba(20,20,20,0.95)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    {viewingStatus.caption}
+                  </div>
                 </div>
               </div>
             )}

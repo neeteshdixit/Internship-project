@@ -14,4 +14,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
            "(m.sender = :user2 AND m.receiver = :user1) " +
            "ORDER BY m.timestamp ASC")
     List<Message> findChatHistory(@Param("user1") User user1, @Param("user2") User user2);
+
+    @Query("SELECT DISTINCT CASE WHEN m.sender.username = :username THEN m.receiver ELSE m.sender END " +
+           "FROM Message m WHERE m.sender.username = :username OR m.receiver.username = :username")
+    List<User> findChatPartners(@Param("username") String username);
 }

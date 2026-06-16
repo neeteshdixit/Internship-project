@@ -42,4 +42,8 @@ public class MessageService {
 
         return messageRepository.findChatHistory(user1, user2);
     }
+
+    public List<User> getChatPartners(String username) {
+        return messageRepository.findChatPartners(username);
+    }
 }

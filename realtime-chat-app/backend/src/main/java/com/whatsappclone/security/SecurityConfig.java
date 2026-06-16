@@ -37,8 +37,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             // 1.3. API request routes settings:
             .authorizeHttpRequests(auth -> auth
-                // Registration aur Login controller paths ko public permit denge (Anonymous access)
-                .requestMatchers("/api/auth/**").permitAll()
+                // Registration, Login, and WebSocket paths are public (permitted)
+                .requestMatchers("/api/auth/**", "/ws/**").permitAll()
                 // Kisi bhi aur REST API request (like /api/chats) ko security verify karne ke liye user validation token mandatory hai.
                 .anyRequest().authenticated()
             )
@@ -59,7 +59,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173")); // React standard port allowed
+        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:5174")); // React standard ports allowed
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true);

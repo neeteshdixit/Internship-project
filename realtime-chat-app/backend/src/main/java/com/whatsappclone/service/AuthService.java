@@ -33,11 +33,15 @@ public class AuthService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new UserAlreadyExistsException("Email is already registered");
         }
+        if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+            throw new UserAlreadyExistsException("Phone number is already registered");
+        }
 
         // Hashing password and mapping request DTO to database User Entity.
         User user = User.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
+                .phoneNumber(request.getPhoneNumber())
                 // Hashing the password using BCrypt
                 .password(passwordEncoder.encode(request.getPassword()))
                 .profilePicUrl(request.getProfilePicUrl())
@@ -55,6 +59,7 @@ public class AuthService {
                 .id(savedUser.getId())
                 .username(savedUser.getUsername())
                 .email(savedUser.getEmail())
+                .phoneNumber(savedUser.getPhoneNumber())
                 .profilePicUrl(savedUser.getProfilePicUrl())
                 .build();
     }
@@ -83,6 +88,7 @@ public class AuthService {
                 .id(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
                 .profilePicUrl(user.getProfilePicUrl())
                 .build();
     }

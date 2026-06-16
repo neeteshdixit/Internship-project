@@ -94,4 +94,22 @@ public class MessageController {
     public ResponseEntity<Set<String>> getOnlineUsers() {
         return ResponseEntity.ok(presenceService.getOnlineUsers());
     }
+
+    // 5. REST API: Retrieves list of users who have chat history with current user
+    @GetMapping("/api/messages/partners/{username}")
+    public ResponseEntity<List<PartnerDto>> getChatPartners(@PathVariable String username) {
+        List<com.whatsappclone.model.User> partners = messageService.getChatPartners(username);
+        List<PartnerDto> dtos = partners.stream()
+                .map(user -> new PartnerDto(
+                        user.getId(),
+                        user.getUsername(),
+                        user.getEmail(),
+                        user.getPhoneNumber(),
+                        user.getProfilePicUrl() != null ? user.getProfilePicUrl() : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
+                ))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
+    }
+
+    public static record PartnerDto(Long id, String username, String email, String phoneNumber, String profilePicUrl) {}
 }
