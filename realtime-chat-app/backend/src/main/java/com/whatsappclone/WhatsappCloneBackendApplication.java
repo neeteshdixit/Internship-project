@@ -3,9 +3,10 @@ package com.whatsappclone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-// @SpringBootApplication: Yeh Annotation batati hai ki Spring Boot application yahan se start hogi.
-// Yeh internal teen annotations ka collection hai: Configuration, EnableAutoConfiguration, aur ComponentScan.
+import org.springframework.scheduling.annotation.EnableScheduling;
+
 @SpringBootApplication
+@EnableScheduling
 public class WhatsappCloneBackendApplication {
 
 	public static void main(String[] args) {

@@ -1,56 +1,93 @@
 /* WhatsApp Secure AI - Global CSS Stylesheet */
 
 :root {
-  /* Color Palette (Dark Theme / Sleek Teal) */
-  --bg-darker: #0d1117;
-  --bg-dark: #161b22;
-  --bg-light: #21262d;
+  /* ── Dark Theme (default) ── */
+  --bg-darker:    #0d1117;
+  --bg-dark:      #161b22;
+  --bg-light:     #21262d;
   --border-color: #30363d;
-  
-  --primary: #00a884;
+
+  --primary:       #00a884;
   --primary-hover: #008f72;
-  --primary-glow: rgba(0, 168, 132, 0.25);
-  
-  --text-main: #e6edf3;
-  --text-muted: #8b949e;
-  --text-light: #ffffff;
-  
-  --chat-sender: #005c4b;
-  --chat-receiver: #202c33;
-  --chat-input-bg: #2a3942;
-  
-  --danger: #f85149;
+  --primary-dark:  #007a62;
+  --primary-glow:  rgba(0, 168, 132, 0.25);
+
+  --text-main:   #e6edf3;
+  --text-muted:  #8b949e;
+  --text-light:  #ffffff;
+  --text-inv:    #111b21;
+
+  --chat-sender:    #005c4b;
+  --chat-receiver:  #202c33;
+  --chat-input-bg:  #2a3942;
+
+  --card-bg:    #161b22;
+  --hover-bg:   rgba(255,255,255,0.05);
+
+  --danger:       #f85149;
   --danger-hover: #da3633;
-  
+
+  --icon-color:    #e6edf3;
+  --btn-text:      #e6edf3;
+  --input-text:    #e6edf3;
+  --placeholder:   #8b949e;
+  --select-bg:     #21262d;
+  --select-text:   #e6edf3;
+
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.5);
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast:   0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-medium: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Light theme support */
+/* ── Light Theme ── */
 :root.light-mode {
-  --bg-darker: #f0f2f5;
-  --bg-dark: #ffffff;
-  --bg-light: #f7f9fa;
+  --bg-darker:    #f0f2f5;
+  --bg-dark:      #ffffff;
+  --bg-light:     #f7f9fa;
   --border-color: #e3e7eb;
-  
-  --primary: #008069;
+
+  --primary:       #008069;
   --primary-hover: #006b57;
-  --primary-glow: rgba(0, 128, 105, 0.15);
-  
-  --text-main: #111b21;
-  --text-muted: #667781;
-  --text-light: #ffffff;
-  
-  --chat-sender: #d9fdd3;
-  --chat-receiver: #ffffff;
-  --chat-input-bg: #f0f2f5;
+  --primary-dark:  #005a49;
+  --primary-glow:  rgba(0, 128, 105, 0.15);
+
+  --text-main:   #111b21;
+  --text-muted:  #667781;
+  --text-light:  #ffffff;
+  --text-inv:    #ffffff;
+
+  --chat-sender:    #d9fdd3;
+  --chat-receiver:  #ffffff;
+  --chat-input-bg:  #f0f2f5;
+
+  --card-bg:    #ffffff;
+  --hover-bg:   rgba(0,0,0,0.04);
+
+  --danger:       #dc2626;
+  --danger-hover: #b91c1c;
+
+  --icon-color:    #111b21;
+  --btn-text:      #111b21;
+  --input-text:    #111b21;
+  --placeholder:   #667781;
+  --select-bg:     #f7f9fa;
+  --select-text:   #111b21;
+
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.12);
 }
 
-* {
+/* ── Reset ── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -63,89 +100,58 @@ body {
   transition: background-color var(--transition-medium), color var(--transition-medium);
 }
 
-#root {
-  height: 100%;
-  width: 100%;
+/* Inputs & Selects inherit theme */
+input, textarea, select {
+  color: var(--input-text);
+  background-color: transparent;
+  font-family: var(--font-sans);
 }
 
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+select {
+  background-color: var(--select-bg);
+  color: var(--select-text);
+  border: 1px solid var(--border-color);
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* ── Custom Scrollbars ── */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border-color); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
-/* Utility Animations */
+/* ── Utility Animations ── */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes scaleUp {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes slideInLeft {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
 }
 
-.animate-fade-in {
-  animation: fadeIn var(--transition-medium) forwards;
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.animate-scale-up {
-  animation: scaleUp var(--transition-medium) forwards;
-}
+.animate-fade-in  { animation: fadeIn  var(--transition-medium) forwards; }
+.animate-scale-up { animation: scaleUp var(--transition-medium) forwards; }
 
-/* Glassmorphism utility */
+/* ── Glassmorphism ── */
 .glass {
-  background: rgba(22, 27, 34, 0.8);
+  background: rgba(22, 27, 34, 0.82);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
 }
 .light-mode .glass {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--border-color);
 }
 
-/* Hover effects */
-.btn-hover-grow {
-  transition: transform var(--transition-fast), background-color var(--transition-fast);
-}
-.btn-hover-grow:hover {
-  transform: translateY(-1px);
-}
-.btn-hover-grow:active {
-  transform: translateY(1px);
-}
+.btn-hover-grow { transition: transform var(--transition-fast), background-color var(--transition-fast); }
+.btn-hover-grow:hover  { transform: translateY(-1px); }
+.btn-hover-grow:active { transform: translateY(1px); }

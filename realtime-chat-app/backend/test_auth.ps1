@@ -12,8 +12,13 @@ $regBody = @{
     profilePicUrl = "http://example.com/pic.png"
 } | ConvertTo-Json
 
-# Execute POST request to /api/auth/register (Port 8081)
-$regResponse = Invoke-RestMethod -Uri "http://localhost:8081/api/auth/register" -Method Post -Body $regBody -ContentType "application/json"
+# Execute POST request to /api/auth/register (default backend port 8082)
+$baseUrl = $env:BACKEND_BASE_URL
+if (-not $baseUrl) {
+    $baseUrl = "http://localhost:8082"
+}
+
+$regResponse = Invoke-RestMethod -Uri "$baseUrl/api/auth/register" -Method Post -Body $regBody -ContentType "application/json"
 
 Write-Host "Registration Successful! Response:" -ForegroundColor Green
 $regResponse | Format-List
@@ -28,7 +33,7 @@ $loginBody = @{
     password = "SecurePassword123"
 } | ConvertTo-Json
 
-$loginResponse = Invoke-RestMethod -Uri "http://localhost:8081/api/auth/login" -Method Post -Body $loginBody -ContentType "application/json"
+$loginResponse = Invoke-RestMethod -Uri "$baseUrl/api/auth/login" -Method Post -Body $loginBody -ContentType "application/json"
 
 $jwtToken = $loginResponse.token
 Write-Host "Login Successful! Token received:" -ForegroundColor Green
@@ -42,7 +47,7 @@ Write-Host "=======================================" -ForegroundColor Cyan
 Write-Host "Calling protected route /api/chats WITH token..." -ForegroundColor Yellow
 try {
     $headers = @{ Authorization = "Bearer $jwtToken" }
-    $protectedResponse = Invoke-WebRequest -Uri "http://localhost:8081/api/chats" -Method Get -Headers $headers -UseBasicParsing
+    $protectedResponse = Invoke-WebRequest -Uri "$baseUrl/api/chats" -Method Get -Headers $headers -UseBasicParsing
     Write-Host "Success! Status Code: $($protectedResponse.StatusCode) (Authorized)" -ForegroundColor Green
     Write-Host "Content: $($protectedResponse.Content)" -ForegroundColor Green
 } catch {
@@ -52,7 +57,7 @@ try {
 # 4. Try accessing a protected route WITHOUT Token
 Write-Host "`nCalling protected route /api/chats WITHOUT token..." -ForegroundColor Yellow
 try {
-    $badResponse = Invoke-WebRequest -Uri "http://localhost:8081/api/chats" -Method Get -UseBasicParsing
+    $badResponse = Invoke-WebRequest -Uri "$baseUrl/api/chats" -Method Get -UseBasicParsing
 } catch {
     Write-Host "Blocked! Status Code: $($_.Exception.Response.StatusCode.Value__) (403 Forbidden - Unauthorized)" -ForegroundColor Red
 }

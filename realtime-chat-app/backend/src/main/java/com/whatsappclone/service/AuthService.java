@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import com.whatsappclone.exception.UserAlreadyExistsException;
 
-// @Service: Spring Service class
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -23,10 +22,10 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final com.whatsappclone.repo.PrivacySettingsRepository privacySettingsRepository;
 
     // 1. REGISTER USER:
     public AuthResponse register(RegisterRequest request) {
-        // Validation check for duplicates
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new UserAlreadyExistsException("Username is already taken");
         }
@@ -37,54 +36,74 @@ public class AuthService {
             throw new UserAlreadyExistsException("Phone number is already registered");
         }
 
-        // Hashing password and mapping request DTO to database User Entity.
         User user = User.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
                 .phoneNumber(request.getPhoneNumber())
-                // Hashing the password using BCrypt
                 .password(passwordEncoder.encode(request.getPassword()))
                 .profilePicUrl(request.getProfilePicUrl())
                 .build();
 
-        // Database mein save karenge
         User savedUser = userRepository.save(user);
 
-        // JWT Token generate karenge
+        com.whatsappclone.model.PrivacySettings settings = com.whatsappclone.model.PrivacySettings.builder()
+                .user(savedUser)
+                .build();
+        privacySettingsRepository.save(settings);
+
         String jwtToken = jwtService.generateToken(savedUser);
 
-        // Success response return karenge client ko
-        return AuthResponse.builder()
-                .token(jwtToken)
-                .id(savedUser.getId())
-                .username(savedUser.getUsername())
-                .email(savedUser.getEmail())
-                .phoneNumber(savedUser.getPhoneNumber())
-                .profilePicUrl(savedUser.getProfilePicUrl())
-                .build();
+        return buildResponse(jwtToken, savedUser);
     }
 
-    // 2. LOGIN USER:
+    // 2. LOGIN USER — supports phone number OR username:
     public AuthResponse login(AuthRequest request) {
-        // AuthenticationManager check karega ki username aur password database se match kar rahe hain ya nahi.
-        // Agar match nahi karenge toh Spring custom exception throw kar dega aur process wahi ruk jayega.
+        String identifier = request.getIdentifier();
+        if (identifier == null || identifier.isBlank()) {
+            throw new IllegalArgumentException("Phone number or username is required");
+        }
+        String password = request.getPassword();
+        if (password == null || password.isBlank()) {
+            throw new IllegalArgumentException("Password is required");
+        }
+
+        // Resolve actual username to pass to AuthenticationManager
+        // (Spring Security needs the "username" field used in UserDetailsService)
+        // We pass the raw identifier — ApplicationConfig.userDetailsService() handles resolution.
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getUsername(),
-                        request.getPassword()
-                )
+                new UsernamePasswordAuthenticationToken(identifier, request.getPassword())
         );
 
-        // If credentials match: load user details from DB
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+        // Look up the resolved user (same logic as UserDetailsService)
+        User user = resolveUser(identifier);
 
-        // Generate dynamic token
         String jwtToken = jwtService.generateToken(user);
+        return buildResponse(jwtToken, user);
+    }
 
-        // Return token & profile details
+    /**
+     * Resolve phone OR username to a User entity.
+     */
+    private User resolveUser(String identifier) {
+        // Phone number (all digits)?
+        if (identifier != null && identifier.matches("\\d+")) {
+            var byPhone = userRepository.findByPhoneNumber(identifier);
+            if (byPhone.isPresent()) return byPhone.get();
+        }
+        // Exact username
+        var byUsername = userRepository.findByUsername(identifier);
+        if (byUsername.isPresent()) return byUsername.get();
+
+        // Case-insensitive list fallback (safe)
+        var matches = userRepository.findAllByUsernameIgnoreCase(identifier);
+        if (!matches.isEmpty()) return matches.get(0);
+
+        throw new IllegalArgumentException("Invalid credentials");
+    }
+
+    private AuthResponse buildResponse(String token, User user) {
         return AuthResponse.builder()
-                .token(jwtToken)
+                .token(token)
                 .id(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())

@@ -42,7 +42,11 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String password;
 
+    @Column(columnDefinition = "TEXT")
     private String profilePicUrl;
+
+    @Builder.Default
+    private String about = "Hey there! I am using WhatsApp.";
 
     private LocalDateTime lastSeen;
 
