@@ -34,13 +34,115 @@ import {
   ArrowUpRight,
   Shield,
   Activity,
-  FileText
+  FileText,
+  Flame,
+  MapPin,
+  ShieldAlert,
+  WifiOff,
+  Zap
 } from 'lucide-react';
 import './App.css';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
+import { encryptPayload, decryptPayload } from './crypto/cryptoEngine';
 
 const API_BASE_URL = 'http://localhost:8081';
+
+const normalizeChatIdentity = (value) => {
+  if (value === null || value === undefined) return '';
+  return String(value).trim().toLowerCase();
+};
+
+const pushUniqueCandidate = (list, candidate) => {
+  if (candidate === undefined || candidate === '') return;
+  const normalized = String(candidate).trim();
+  if (!normalized) return;
+  if (!list.includes(normalized)) list.push(normalized);
+};
+
+const buildDirectChatKey = (participantA, participantB) => {
+  const participants = [normalizeChatIdentity(participantA), normalizeChatIdentity(participantB)]
+    .filter(Boolean)
+    .sort();
+
+  return participants.length ? `direct:${participants.join('|')}` : '';
+};
+
+const buildDirectChatCandidates = (peerUsername, currentUsername) => {
+  const candidates = [];
+  pushUniqueCandidate(candidates, buildDirectChatKey(currentUsername, peerUsername));
+  pushUniqueCandidate(candidates, peerUsername);
+  pushUniqueCandidate(candidates, normalizeChatIdentity(peerUsername));
+  pushUniqueCandidate(candidates, currentUsername);
+  pushUniqueCandidate(candidates, normalizeChatIdentity(currentUsername));
+  return candidates;
+};
+
+const buildGroupChatKey = (groupId) => {
+  const normalized = normalizeChatIdentity(groupId);
+  return normalized ? `group:${normalized}` : '';
+};
+
+const buildGroupChatCandidates = (groupId) => {
+  const candidates = [];
+  pushUniqueCandidate(candidates, buildGroupChatKey(groupId));
+  candidates.push(null);
+  return candidates;
+};
+
+const getConversationVanishConfig = (contact, currentUsername) => {
+  if (!contact || !currentUsername) return null;
+
+  if (contact.isGroup) {
+    if (contact.groupId === null || contact.groupId === undefined) return null;
+    return {
+      conversationKey: buildGroupChatKey(contact.groupId),
+      endpoint: `${API_BASE_URL}/api/vanish-mode/group/${contact.groupId}`,
+      groupId: contact.groupId,
+      peerUsername: null
+    };
+  }
+
+  const peerUsername = contact.username || contact.name || '';
+  if (!peerUsername) return null;
+
+  return {
+    conversationKey: buildDirectChatKey(currentUsername, peerUsername),
+    endpoint: `${API_BASE_URL}/api/vanish-mode/direct/${encodeURIComponent(peerUsername)}`,
+    groupId: null,
+    peerUsername
+  };
+};
+
+const getMessageExpiryTimestamp = (msg) => {
+  if (!msg) return null;
+  if (msg.expiresAt) {
+    const parsed = new Date(msg.expiresAt).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (!msg.selfDestructSeconds) return null;
+  const baseTime = msg.readAt ? new Date(msg.readAt).getTime() : null;
+  return Number.isNaN(baseTime) || baseTime === null
+    ? null
+    : baseTime + (msg.selfDestructSeconds * 1000);
+};
+
+const isExpiredMessage = (msg, now = Date.now()) => {
+  const expiry = getMessageExpiryTimestamp(msg);
+  return expiry !== null && expiry <= now;
+};
+
+const applyLocalVanishExpiry = (msg, referenceTime = Date.now()) => {
+  if (!msg || !msg.selfDestructSeconds || msg.expiresAt) return msg;
+  const readAt = msg.readAt || new Date(referenceTime).toISOString();
+  const readTime = new Date(readAt).getTime();
+  if (Number.isNaN(readTime)) return msg;
+  return {
+    ...msg,
+    readAt,
+    expiresAt: new Date(readTime + (msg.selfDestructSeconds * 1000)).toISOString()
+  };
+};
 
 
 function App() {
@@ -64,6 +166,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchError, setSearchError] = useState(null);
   const [messageInput, setMessageInput] = useState('');
+  const [messageClock, setMessageClock] = useState(Date.now());
   
   // Audio/Video Call System State
   const [activeCall, setActiveCall] = useState(null); // 'audio' | 'video' | null
@@ -186,9 +289,205 @@ function App() {
   const [pendingAiFeature, setPendingAiFeature] = useState(null);
   const [latestAiReport, setLatestAiReport] = useState(null);
 
-  // Active chat state
+  // Field Communication & Security States
+  const [disappearingModes, setDisappearingModes] = useState({});
+  const [disappearingTimers, setDisappearingTimers] = useState({});
+  const [disappearingModeOwners, setDisappearingModeOwners] = useState({});
+  const [offlineQueue, setOfflineQueue] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tactical_offline_queue') || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const vanishModeSyncRef = useRef('');
+
+  // Core chat state - declared here so useEffects below can safely reference them
   const [activeContactId, setActiveContactId] = useState(null);
   const [contacts, setContacts] = useState([]);
+
+  const applyConversationVanishState = (conversationKey, enabled, enabledByUsername) => {
+    if (!conversationKey) return;
+    const isEnabled = Boolean(enabled);
+
+    setDisappearingModes(prev => ({
+      ...prev,
+      [conversationKey]: isEnabled
+    }));
+
+    setDisappearingModeOwners(prev => ({
+      ...prev,
+      [conversationKey]: isEnabled ? (enabledByUsername || null) : null
+    }));
+
+    if (isEnabled) {
+      setDisappearingTimers(prev => ({
+        ...prev,
+        [conversationKey]: 30
+      }));
+    }
+  };
+
+  const loadConversationVanishState = async (contact) => {
+    const config = getConversationVanishConfig(contact, currentUser?.username);
+    if (!config) return null;
+
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(config.endpoint, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      applyConversationVanishState(config.conversationKey, data.enabled, data.enabledByUsername);
+      return data;
+    } catch (error) {
+      console.error('Error loading vanish mode state:', error);
+      return null;
+    }
+  };
+
+  const handleToggleVanishMode = async (contact) => {
+    if (!contact || !currentUser) return;
+    const config = getConversationVanishConfig(contact, currentUser.username);
+    if (!config?.conversationKey) return;
+
+    const currentKey = config.conversationKey;
+    const isCurrentlyOn = Boolean(disappearingModes[currentKey]);
+    const ownerUsername = disappearingModeOwners[currentKey];
+
+    // Security check: Only the user who enabled Vanish Mode can turn it OFF!
+    if (isCurrentlyOn && ownerUsername && ownerUsername.toLowerCase() !== currentUser.username.toLowerCase()) {
+      alert(`🚫 Security Restriction:\nOnly ${ownerUsername} (who turned ON Vanish Mode) can turn it off.`);
+      return;
+    }
+
+    const targetState = !isCurrentlyOn;
+
+    if (isDemoMode) {
+      applyConversationVanishState(currentKey, targetState, targetState ? currentUser.username : null);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(config.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ enabled: targetState })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        applyConversationVanishState(data.conversationKey, data.enabled, data.enabledByUsername);
+      } else {
+        const errData = await response.json();
+        alert(errData.message || errData.error || "Failed to update Vanish Mode.");
+      }
+    } catch (e) {
+      console.error("Error toggling vanish mode:", e);
+      alert("Error connecting to server to update Vanish Mode.");
+    }
+  };
+
+  // --- ANTI-SCREENSHOT PROTECTION SYSTEM ---
+  const [isScreenBlurred, setIsScreenBlurred] = useState(false);
+
+  useEffect(() => {
+    const currentActiveContact = contacts.find(c => c.id === activeContactId);
+    const vanishConfig = getConversationVanishConfig(currentActiveContact, currentUser?.username);
+    const activeVanishKey = vanishConfig?.conversationKey || '';
+    const isVanishActive = Boolean(activeVanishKey && disappearingModes[activeVanishKey]);
+
+    if (!isVanishActive) {
+      setIsScreenBlurred(false);
+      document.body.classList.remove('vanish-active');
+      return;
+    }
+
+    document.body.classList.add('vanish-active');
+
+    // Intercept and block keyboard shortcuts for Screenshots / Snipping Tool / Print
+    const handleKeyDown = (e) => {
+      const isPrintScreen = e.key === 'PrintScreen' || e.keyCode === 44;
+      const isMacScreenshot = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5' || e.key === 'S' || e.key === 's');
+      const isWindowsSnipping = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'S' || e.key === 's');
+      const isPrint = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P');
+      const isSave = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S');
+
+      if (isPrintScreen || isMacScreenshot || isWindowsSnipping || isPrint || isSave) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        setIsScreenBlurred(true);
+        setTimeout(() => setIsScreenBlurred(false), 2500);
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText('');
+        }
+
+        alert("🔒 Vanish Mode Anti-Screenshot Security:\nScreenshots, screen capture shortcuts, and printing are strictly blocked while Vanish Mode is active!");
+        return false;
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      if (e.key === 'PrintScreen' || e.keyCode === 44) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText('');
+        }
+      }
+    };
+
+    // Hide screen content ONLY when switching browser tabs (document.hidden)
+    const handleVisibilityChange = () => setIsScreenBlurred(document.hidden);
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.body.classList.remove('vanish-active');
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeContactId, contacts, currentUser, disappearingModes]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      const queue = JSON.parse(localStorage.getItem('tactical_offline_queue') || '[]');
+      if (queue.length > 0 && stompClientRef.current && stompClientRef.current.connected) {
+        queue.forEach(item => {
+          stompClientRef.current.publish({
+            destination: '/app/chat',
+            body: JSON.stringify(item)
+          });
+        });
+        localStorage.removeItem('tactical_offline_queue');
+        setOfflineQueue([]);
+        alert(`🛰️ Field Network Restored: ${queue.length} offline queued messages transmitted!`);
+      }
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const activeContactIdRef = useRef(activeContactId);
   const contactsRef = useRef(contacts);
@@ -262,6 +561,43 @@ function App() {
     // Scroll chat window to bottom on new message
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeContactId, contacts]);
+
+  useEffect(() => {
+    setContacts(prev => {
+      let changed = false;
+      const next = prev.map(contact => {
+        if (!contact.messages || contact.messages.length === 0) return contact;
+        const filteredMessages = contact.messages.filter(msg => !isExpiredMessage(msg, messageClock));
+        if (filteredMessages.length !== contact.messages.length) {
+          changed = true;
+          return { ...contact, messages: filteredMessages };
+        }
+        return contact;
+      });
+      return changed ? next : prev;
+    });
+  }, [messageClock]);
+
+  useEffect(() => {
+    if (!currentUser || isDemoMode || activeContactId === null) return;
+
+    const currentActiveContact = contacts.find(c => c.id === activeContactId);
+    if (!currentActiveContact || currentActiveContact.isAi || currentActiveContact.isNotes) return;
+
+    const config = getConversationVanishConfig(currentActiveContact, currentUser.username);
+    if (!config?.conversationKey || vanishModeSyncRef.current === config.conversationKey) return;
+
+    vanishModeSyncRef.current = config.conversationKey;
+    void loadConversationVanishState(currentActiveContact);
+  }, [activeContactId, contacts, currentUser, isDemoMode]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessageClock(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // WebSocket Connection Hook
   useEffect(() => {
@@ -438,23 +774,47 @@ function App() {
       });
 
       // Subscribe to receive real-time messages
-      client.subscribe(`/topic/messages/${currentUser.username}`, (message) => {
+      client.subscribe(`/topic/messages/${currentUser.username}`, async (message) => {
         const received = JSON.parse(message.body);
+        const deletedMessageId = received.messageId || received.id;
+
+        if (received.type === "VANISH_MODE_UPDATED" && received.conversationKey) {
+          applyConversationVanishState(
+            received.conversationKey,
+            received.enabled,
+            received.enabledByUsername
+          );
+          return;
+        }
         
-        if (received.content === "DELETED") {
+        if (received.content === "DELETED" || received.type === "MESSAGE_DELETED") {
           setContacts(prev => prev.map(contact => {
             return {
               ...contact,
-              messages: contact.messages.map(m => m.id === received.id ? { ...m, text: "DELETED" } : m)
+              messages: contact.messages.filter(m => m.id !== deletedMessageId)
             };
           }));
           return;
         }
 
-        const formatted = {
+        // Decrypt the message content before displaying
+        const decryptedContent = received.groupId
+          ? await decryptPayload(received.content, received.iv, buildGroupChatCandidates(received.groupId))
+          : await decryptPayload(
+              received.content,
+              received.iv,
+              buildDirectChatCandidates(
+                received.senderUsername === currentUser.username ? received.receiverUsername : received.senderUsername,
+                currentUser.username
+              )
+            );
+
+        let formatted = {
           id: received.id,
-          text: received.content,
+          text: decryptedContent,
           sender: received.senderUsername === currentUser.username ? 'me' : 'other',
+          senderUsername: received.senderUsername,
+          receiverUsername: received.receiverUsername,
           timestamp: new Date(received.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           status: received.status,
           parentMessageId: received.parentMessageId,
@@ -474,8 +834,25 @@ function App() {
           callStatus: received.callStatus,
           callDuration: received.callDuration,
           callStartedAt: received.callStartedAt,
-          callEndedAt: received.callEndedAt
+          callEndedAt: received.callEndedAt,
+          selfDestructSeconds: received.selfDestructSeconds,
+          expiresAt: received.expiresAt,
+          readAt: received.readAt,
+          isPriority: received.isPriority,
+          latitude: received.latitude,
+          longitude: received.longitude
         };
+
+        const currentActiveContactId = activeContactIdRef.current;
+        if (currentActiveContactId) {
+          const activeContact = contactsRef.current.find(c => c.id === currentActiveContactId);
+          const activeContactUsername = activeContact ? (activeContact.username || activeContact.name || '') : '';
+          const isActiveDirectChat = activeContact && !activeContact.isGroup && activeContactUsername.toLowerCase().trim() === received.senderUsername.toLowerCase().trim();
+          const isActiveGroupChat = activeContact && activeContact.isGroup && received.groupId && activeContact.groupId === received.groupId;
+          if ((isActiveDirectChat || isActiveGroupChat) && formatted.sender !== 'me' && formatted.selfDestructSeconds && !formatted.expiresAt) {
+            formatted = applyLocalVanishExpiry(formatted);
+          }
+        }
 
         if (received.groupId) {
           formatted.senderUsername = received.senderUsername;
@@ -557,7 +934,6 @@ function App() {
         }
 
         // If we are currently viewing the chat of the sender, mark it read immediately!
-        const currentActiveContactId = activeContactIdRef.current;
         if (currentActiveContactId) {
           const activeContact = contactsRef.current.find(c => c.id === currentActiveContactId);
           const activeContactUsername = activeContact ? (activeContact.username || activeContact.name || '') : '';
@@ -579,7 +955,19 @@ function App() {
           if (contactUsername.toLowerCase().trim() === readReceipt.receiverUsername.toLowerCase().trim()) {
             return {
               ...contact,
-              messages: contact.messages.map(m => m.sender === 'me' ? { ...m, status: 'read' } : m)
+              messages: contact.messages.map(m => {
+                if (m.sender !== 'me') return m;
+                const updated = { ...m, status: 'read' };
+                if (updated.selfDestructSeconds) {
+                  const readAt = updated.readAt || new Date().toISOString();
+                  const readTime = new Date(readAt).getTime();
+                  if (!Number.isNaN(readTime)) {
+                    updated.readAt = readAt;
+                    updated.expiresAt = updated.expiresAt || new Date(readTime + (updated.selfDestructSeconds * 1000)).toISOString();
+                  }
+                }
+                return updated;
+              })
             };
           }
           return contact;
@@ -1138,26 +1526,44 @@ function App() {
           });
           if (response.ok) {
             const data = await response.json();
-            const formatted = data.map(msg => ({
-              id: msg.id,
-              text: msg.content,
-              sender: msg.senderUsername === currentUser.username ? 'me' : 'other',
-              senderUsername: msg.senderUsername,
-              timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              status: msg.status,
-              parentMessageId: msg.parentMessageId,
-              parentMessageText: msg.parentMessageText,
-              parentMessageSender: msg.parentMessageSender,
-              isForwarded: msg.isForwarded,
-              isStarred: msg.isStarred,
-              isPinned: msg.isPinned,
-              reactions: msg.reactions,
-              isMedia: msg.isMedia,
-              mediaUrl: msg.mediaUrl,
-              mediaType: msg.mediaType,
-              fileName: msg.fileName,
-              fileSize: msg.fileSize,
-              messageType: msg.messageType
+            const formatted = await Promise.all(data.map(async msg => {
+              const decryptedText = await decryptPayload(
+                msg.content,
+                msg.iv,
+                buildGroupChatCandidates(activeContact.groupId)
+              );
+              const formattedMsg = {
+                id: msg.id,
+                text: decryptedText,
+                sender: msg.senderUsername === currentUser.username ? 'me' : 'other',
+                senderUsername: msg.senderUsername,
+                receiverUsername: msg.receiverUsername,
+                timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                status: msg.status,
+                parentMessageId: msg.parentMessageId,
+                parentMessageText: msg.parentMessageText,
+                parentMessageSender: msg.parentMessageSender,
+                isForwarded: msg.isForwarded,
+                isStarred: msg.isStarred,
+                isPinned: msg.isPinned,
+                reactions: msg.reactions,
+                isMedia: msg.isMedia,
+                mediaUrl: msg.mediaUrl,
+                mediaType: msg.mediaType,
+                fileName: msg.fileName,
+                fileSize: msg.fileSize,
+                messageType: msg.messageType,
+                selfDestructSeconds: msg.selfDestructSeconds,
+                expiresAt: msg.expiresAt,
+                readAt: msg.readAt,
+                isPriority: msg.isPriority,
+                latitude: msg.latitude,
+                longitude: msg.longitude
+              };
+              if (formattedMsg.sender === 'other' && formattedMsg.selfDestructSeconds && !formattedMsg.expiresAt) {
+                return applyLocalVanishExpiry(formattedMsg);
+              }
+              return formattedMsg;
             }));
 
             setContacts(prev => prev.map(c => {
@@ -1204,30 +1610,54 @@ function App() {
         
         if (response.ok) {
           const data = await response.json();
-          const formatted = data.map(msg => ({
-            id: msg.id,
-            text: msg.content,
-            sender: msg.senderUsername === currentUser.username ? 'me' : 'other',
-            timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: msg.status,
-            parentMessageId: msg.parentMessageId,
-            parentMessageText: msg.parentMessageText,
-            parentMessageSender: msg.parentMessageSender,
-            isForwarded: msg.isForwarded,
-            isStarred: msg.isStarred,
-            isPinned: msg.isPinned,
-            reactions: msg.reactions,
-            isMedia: msg.isMedia,
-            mediaUrl: msg.mediaUrl,
-            mediaType: msg.mediaType,
-            fileName: msg.fileName,
-            fileSize: msg.fileSize,
-            messageType: msg.messageType,
-            callType: msg.callType,
-            callStatus: msg.callStatus,
-            callDuration: msg.callDuration,
-            callStartedAt: msg.callStartedAt,
-            callEndedAt: msg.callEndedAt
+          const contactUsername = activeContact.username || activeContact.name;
+          const formatted = await Promise.all(data.map(async msg => {
+            const peerUsername = msg.senderUsername === currentUser.username
+              ? msg.receiverUsername || contactUsername
+              : msg.senderUsername;
+            const decryptedText = await decryptPayload(
+              msg.content,
+              msg.iv,
+              buildDirectChatCandidates(peerUsername, currentUser.username)
+            );
+            const formattedMsg = {
+              id: msg.id,
+              text: decryptedText,
+              sender: msg.senderUsername === currentUser.username ? 'me' : 'other',
+              senderUsername: msg.senderUsername,
+              receiverUsername: msg.receiverUsername,
+              timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              status: msg.status,
+              parentMessageId: msg.parentMessageId,
+              parentMessageText: msg.parentMessageText,
+              parentMessageSender: msg.parentMessageSender,
+              isForwarded: msg.isForwarded,
+              isStarred: msg.isStarred,
+              isPinned: msg.isPinned,
+              reactions: msg.reactions,
+              isMedia: msg.isMedia,
+              mediaUrl: msg.mediaUrl,
+              mediaType: msg.mediaType,
+              fileName: msg.fileName,
+              fileSize: msg.fileSize,
+              messageType: msg.messageType,
+              callType: msg.callType,
+              callStatus: msg.callStatus,
+              callDuration: msg.callDuration,
+              callStartedAt: msg.callStartedAt,
+              callEndedAt: msg.callEndedAt,
+              selfDestructSeconds: msg.selfDestructSeconds,
+              expiresAt: msg.expiresAt,
+              readAt: msg.readAt,
+              isPriority: msg.isPriority,
+              latitude: msg.latitude,
+              longitude: msg.longitude
+            };
+
+            if (formattedMsg.sender === 'other' && formattedMsg.selfDestructSeconds && !formattedMsg.expiresAt) {
+              return applyLocalVanishExpiry(formattedMsg);
+            }
+            return formattedMsg;
           }));
 
           setContacts(prev => prev.map(c => {
@@ -2589,10 +3019,80 @@ function App() {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setActiveContactId(null);
+    setDisappearingModes({});
+    setDisappearingTimers({});
+    setDisappearingModeOwners({});
+    vanishModeSyncRef.current = '';
+  };
+
+  // --- FIELD COMMUNICATION & PANIC WIPE HANDLERS ---
+  const handleShareLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+    if (activeContactId === null) return;
+    const activeContact = contacts.find(c => c.id === activeContactId);
+    if (!activeContact) return;
+
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const targetUser = activeContact.username || activeContact.name;
+      const rawText = `📍 Field Location Pin: Lat ${latitude.toFixed(4)}, Long ${longitude.toFixed(4)}`;
+      
+      const conversationKey = activeContact.isGroup
+        ? buildGroupChatKey(activeContact.groupId)
+        : buildDirectChatKey(currentUser.username, targetUser);
+      const isVanishMode = Boolean(disappearingModes[conversationKey]);
+      const selfDestructSecs = isVanishMode ? (disappearingTimers[conversationKey] || 30) : null;
+      const { ciphertext, iv } = await encryptPayload(rawText, conversationKey || targetUser);
+
+      const payload = {
+        senderUsername: currentUser.username,
+        receiverUsername: activeContact.isGroup ? null : targetUser,
+        groupId: activeContact.isGroup ? activeContact.groupId : null,
+        content: ciphertext,
+        iv: iv,
+        messageType: 'LOCATION',
+        latitude: latitude,
+        longitude: longitude,
+        isPriority: true,
+        selfDestructSeconds: selfDestructSecs
+      };
+
+      if (stompClientRef.current && stompClientRef.current.connected) {
+        stompClientRef.current.publish({
+          destination: '/app/chat',
+          body: JSON.stringify(payload)
+        });
+      }
+    }, (err) => {
+      alert("Unable to fetch GPS field location: " + err.message);
+    });
+  };
+
+  const handlePanicWipe = async () => {
+    if (!confirm("🚨 EMERGENCY PANIC WIPE ALERT!\nThis will permanently erase all local encryption keys, cached chat logs, and shred session data on the server. Proceed?")) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_BASE_URL}/api/messages/panic-wipe`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      sessionStorage.clear();
+      localStorage.removeItem('tactical_offline_queue');
+      setContacts(prev => prev.map(c => ({ ...c, messages: [] })));
+      alert("🔒 EMERGENCY SANITIZATION COMPLETE:\nAll session records, local encryption keys, and server database messages have been wiped.");
+    } catch (e) {
+      console.error("Panic wipe error:", e);
+      alert("Error executing panic wipe.");
+    }
   };
 
   // --- SEND MESSAGE FLOW ---
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || activeContactId === null) return;
     const activeContact = contacts.find(c => c.id === activeContactId);
     if (!activeContact) return;
@@ -2610,25 +3110,6 @@ function App() {
       setContacts(prev => prev.map(contact => {
         if (contact.id === activeContactId) {
           const updatedMsgs = [...contact.messages, newMessage];
-          
-          if (contact.isAi) {
-            setTimeout(() => {
-              const aiReply = {
-                id: Date.now() + 1,
-                text: `Mainne aapka ye message padha: "${messageInput}". Main aapki is chat stream ko Ollama Phi-3 AI se summarize karne ke liye ready hoon. Top-Right header mein diye 'Ollama Summarize' button par click karein!`,
-                sender: 'ai',
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                status: 'read'
-              };
-              setContacts(curr => curr.map(c => {
-                if (c.id === contact.id) {
-                  return { ...c, messages: [...updatedMsgs, aiReply] };
-                }
-                return c;
-              }));
-            }, 1200);
-          }
-
           return { ...contact, messages: updatedMsgs };
         }
         return contact;
@@ -2638,28 +3119,43 @@ function App() {
       return;
     }
 
-    // Live WebSocket Messaging
-    if (stompClientRef.current && stompClientRef.current.connected) {
-      const payload = {
-        senderUsername: currentUser.username,
-        receiverUsername: activeContact.isGroup ? null : (activeContact.username || activeContact.name),
-        groupId: activeContact.isGroup ? activeContact.groupId : null,
-        content: messageInput,
-        parentMessageId: replyToMsg ? replyToMsg.id : null,
-        parentMessageText: replyToMsg ? replyToMsg.text : null,
-        parentMessageSender: replyToMsg ? replyToMsg.senderUsername : null
-      };
+    // Encrypted & Ephemeral Message Construction
+    const targetUser = activeContact.isGroup ? null : (activeContact.username || activeContact.name);
+    const conversationKey = activeContact.isGroup
+      ? buildGroupChatKey(activeContact.groupId)
+      : buildDirectChatKey(currentUser.username, targetUser);
+    const isVanishMode = Boolean(disappearingModes[conversationKey]);
+    const selfDestructSecs = isVanishMode ? (disappearingTimers[conversationKey] || 30) : null;
 
+    const { ciphertext, iv } = await encryptPayload(messageInput, conversationKey || targetUser);
+
+    const payload = {
+      senderUsername: currentUser.username,
+      receiverUsername: targetUser,
+      groupId: activeContact.isGroup ? activeContact.groupId : null,
+      content: ciphertext,
+      iv: iv,
+      selfDestructSeconds: selfDestructSecs,
+      parentMessageId: replyToMsg ? replyToMsg.id : null,
+      parentMessageText: replyToMsg ? replyToMsg.text : null,
+      parentMessageSender: replyToMsg ? replyToMsg.senderUsername : null
+    };
+
+    if (navigator.onLine && stompClientRef.current && stompClientRef.current.connected) {
       stompClientRef.current.publish({
         destination: '/app/chat',
         body: JSON.stringify(payload)
       });
-
       setMessageInput('');
       setReplyToMsg(null);
       sendTypingStatus('idle');
     } else {
-      console.warn("WebSocket not connected!");
+      // Queue offline for field resilience
+      const newQueue = [...offlineQueue, payload];
+      setOfflineQueue(newQueue);
+      localStorage.setItem('tactical_offline_queue', JSON.stringify(newQueue));
+      setMessageInput('');
+      alert("⚡ Field Network Offline: Message queued in local device storage. Will auto-sync when online.");
     }
   };
 
@@ -2851,15 +3347,22 @@ function App() {
     });
   };
 
-  const activeContact = contacts.find(c => c.id === activeContactId);
+  const activeContact = (contacts || []).find(c => c && c.id === activeContactId);
+  const activeVanishConfig = getConversationVanishConfig(activeContact, currentUser?.username);
+  const activeVanishKey = activeVanishConfig?.conversationKey || '';
+  const isVanishActive = Boolean(activeVanishKey && disappearingModes?.[activeVanishKey]);
+  const vanishOwner = disappearingModeOwners?.[activeVanishKey] || null;
+  const isVanishOwner = !vanishOwner || (currentUser?.username && vanishOwner.toLowerCase() === currentUser.username.toLowerCase());
 
   // Filter contacts by label and search query
-  const filteredContacts = contacts.filter(c => {
-    const lowerQuery = searchQuery.toLowerCase();
-    const matchesSearch = c.name.toLowerCase().includes(lowerQuery) ||
+  const filteredContacts = (contacts || []).filter(c => {
+    if (!c) return false;
+    const lowerQuery = (searchQuery || '').toLowerCase();
+    const nameStr = c.name || c.username || c.customName || '';
+    const matchesSearch = nameStr.toLowerCase().includes(lowerQuery) ||
                           (c.username && c.username.toLowerCase().includes(lowerQuery)) ||
                           (c.customName && c.customName.toLowerCase().includes(lowerQuery)) ||
-                          (c.phoneNumber && c.phoneNumber.includes(searchQuery));
+                          (c.phoneNumber && String(c.phoneNumber).includes(searchQuery));
     if (!matchesSearch) return false;
 
     if (selectedLabelFilter === 'ALL') return !c.isArchived;
@@ -2872,20 +3375,22 @@ function App() {
   });
 
   // Filter messages within current chat
-  const activeChatMessages = activeContact ? activeContact.messages.filter(m => {
+  const activeChatMessages = (activeContact && Array.isArray(activeContact.messages)) ? activeContact.messages.filter(m => {
+    if (!m) return false;
+    if (isExpiredMessage(m, messageClock)) return false;
     if (!chatSearchQuery) return true;
     const query = chatSearchQuery.toLowerCase();
     
     // Normal text match
-    if (m.text && m.text.toLowerCase().includes(query)) return true;
+    if (m.text && String(m.text).toLowerCase().includes(query)) return true;
     
     // Call-specific search attributes support (Feature 9)
     if (m.messageType === 'CALL') {
       const isVideo = m.callType === 'VIDEO';
-      const status = m.callStatus ? m.callStatus.toLowerCase() : '';
+      const status = m.callStatus ? String(m.callStatus).toLowerCase() : '';
       const typeStr = isVideo ? 'video call' : 'audio call voice call';
       const duration = m.callDuration ? String(m.callDuration) : '';
-      const timestampStr = m.timestamp ? m.timestamp.toLowerCase() : '';
+      const timestampStr = m.timestamp ? String(m.timestamp).toLowerCase() : '';
       
       if (typeStr.includes(query)) return true;
       if (status.includes(query)) return true;
@@ -3713,67 +4218,159 @@ function App() {
             {activeContact ? (
               <>
                 {/* Chat Panel Header */}
-                <div className="chat-header">
-                  <div className="active-contact-profile" onClick={() => setShowContactProfileModal(true)} style={{ cursor: 'pointer' }}>
-                    <img src={activeContact.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"} alt={activeContact.name} className="avatar" />
-                    <div>
-                      <div className="user-info-name">{activeContact.name}</div>
-                      <div className="user-info-sub">
-                        {typingStates[activeContact.username || activeContact.name] && typingStates[activeContact.username || activeContact.name] !== 'idle'
-                          ? `${typingStates[activeContact.username || activeContact.name]}...`
-                          : activeContact.statusText
-                        }
+                    <div className="chat-header">
+                      <div className="active-contact-profile" onClick={() => setShowContactProfileModal(true)} style={{ cursor: 'pointer' }}>
+                        <img src={activeContact.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"} alt={activeContact.name} className="avatar" />
+                        <div>
+                          <div className="user-info-name">{activeContact.name}</div>
+                          <div className="user-info-sub">
+                            {typingStates[activeContact.username || activeContact.name] && typingStates[activeContact.username || activeContact.name] !== 'idle'
+                              ? `${typingStates[activeContact.username || activeContact.name]}...`
+                              : activeContact.statusText
+                            }
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="chat-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {!activeContact.isAi && !activeContact.isNotes && (
+                          <>
+                            <button 
+                              onClick={() => handleToggleVanishMode(activeContact)}
+                              style={{
+                                padding: '5px 12px',
+                                borderRadius: '16px',
+                                border: '1px solid ' + (isVanishActive ? '#ef4444' : 'var(--border-color)'),
+                                backgroundColor: isVanishActive ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)',
+                                color: isVanishActive ? '#ef4444' : 'var(--text-muted)',
+                                cursor: (isVanishActive && !isVanishOwner) ? 'not-allowed' : 'pointer',
+                                opacity: (isVanishActive && !isVanishOwner) ? 0.75 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s'
+                              }}
+                              title={
+                                isVanishActive 
+                                  ? (isVanishOwner ? "Click to turn OFF Vanish Mode" : `Locked: Only ${vanishOwner} can turn off Vanish Mode`)
+                                  : "Turn ON Vanish Mode (Synced across both users)"
+                              }
+                            >
+                              <Flame size={13} /> {isVanishActive ? `Vanish ON (${vanishOwner === currentUser?.username ? 'You' : vanishOwner})` : 'Vanish OFF'}
+                            </button>
+
+                            <button className="action-btn" title="Share GPS Location Pin" onClick={handleShareLocation} style={{ color: '#06b6d4' }}>
+                              <MapPin size={18} />
+                            </button>
+
+                            <button className="action-btn" title="Emergency Panic Wipe (Kill Switch)" onClick={handlePanicWipe} style={{ color: '#ef4444' }}>
+                              <ShieldAlert size={18} />
+                            </button>
+
+                            <button className="action-btn" title="Voice Call" onClick={() => startCall('audio')} style={{ color: 'var(--primary)' }}>
+                              <Phone size={18} />
+                            </button>
+                            <button className="action-btn" title="Video Call" onClick={() => startCall('video')} style={{ color: 'var(--primary)' }}>
+                              <Video size={18} />
+                            </button>
+                          </>
+                        )}
+                        <button className="action-btn" title="Search Chat" onClick={() => setShowChatSearch(!showChatSearch)}>
+                          <Search size={18} />
+                        </button>
+                        <button className="ai-summary-pill" onClick={triggerAiSummarize}>
+                          <Sparkles size={14} />
+                          Ollama Summarize
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="chat-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {!activeContact.isAi && !activeContact.isNotes && (
-                      <>
-                        <button className="action-btn" title="Voice Call" onClick={() => startCall('audio')} style={{ color: 'var(--primary)' }}>
-                          <Phone size={18} />
-                        </button>
-                        <button className="action-btn" title="Video Call" onClick={() => startCall('video')} style={{ color: 'var(--primary)' }}>
-                          <Video size={18} />
-                        </button>
-                      </>
-                    )}
-                    <button className="action-btn" title="Search Chat" onClick={() => setShowChatSearch(!showChatSearch)}>
-                      <Search size={18} />
-                    </button>
-                    <button className="ai-summary-pill" onClick={triggerAiSummarize}>
-                      <Sparkles size={14} />
-                      Ollama Summarize
-                    </button>
-                  </div>
-                </div>
 
-                {/* Inline chat search filter */}
-                {showChatSearch && (
-                  <div style={{ backgroundColor: 'var(--bg-light)', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-color)' }}>
-                    <Search size={14} style={{ color: 'var(--text-muted)' }} />
-                    <input 
-                      type="text" 
-                      placeholder="Search messages in this chat..." 
-                      value={chatSearchQuery}
-                      onChange={e => setChatSearchQuery(e.target.value)}
-                      style={{ flex: 1, border: 'none', background: 'transparent', color: 'white', outline: 'none', fontSize: '13px' }}
-                    />
-                    {chatSearchQuery && (
-                      <button onClick={() => setChatSearchQuery('')} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>Clear</button>
+                    {/* Inline chat search filter */}
+                    {showChatSearch && (
+                      <div style={{ backgroundColor: 'var(--bg-light)', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-color)' }}>
+                        <Search size={14} style={{ color: 'var(--text-muted)' }} />
+                        <input 
+                          type="text" 
+                          placeholder="Search messages in this chat..." 
+                          value={chatSearchQuery}
+                          onChange={e => setChatSearchQuery(e.target.value)}
+                          style={{ flex: 1, border: 'none', background: 'transparent', color: 'white', outline: 'none', fontSize: '13px' }}
+                        />
+                        {chatSearchQuery && (
+                          <button onClick={() => setChatSearchQuery('')} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>Clear</button>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
 
-                {/* Messages Feed body */}
-                <div 
-                  className="message-feed"
-                  style={{
-                    background: getWallpaperBackground(),
-                    fontSize: fontSize === 'small' ? '12.5px' : fontSize === 'large' ? '16px' : '14px'
-                  }}
-                >
-                  {activeChatMessages.map(msg => (
+                    {/* Messages Feed body */}
+                    <div 
+                      className="message-feed"
+                      onContextMenu={(e) => isVanishActive && e.preventDefault()}
+                      style={{
+                        background: getWallpaperBackground(),
+                        fontSize: fontSize === 'small' ? '12.5px' : fontSize === 'large' ? '16px' : '14px',
+                        position: 'relative',
+                        userSelect: isVanishActive ? 'none' : 'auto',
+                        WebkitUserSelect: isVanishActive ? 'none' : 'auto'
+                      }}
+                    >
+                      {/* Security Overlay when screen is blurred (e.g. Snipping tool active or window unfocused) */}
+                      {isVanishActive && isScreenBlurred && (
+                        <div style={{
+                          position: 'absolute',
+                          top: 0, left: 0, right: 0, bottom: 0,
+                          backgroundColor: '#0f172a',
+                          zIndex: 999,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ef4444',
+                          gap: '12px',
+                          padding: '20px',
+                          textAlign: 'center',
+                          backdropFilter: 'blur(20px)'
+                        }}>
+                          <ShieldAlert size={48} color="#ef4444" />
+                          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>🔒 Screen Protected (Vanish Mode Active)</div>
+                          <div style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '350px' }}>
+                            Chat contents are hidden to prevent external screenshot capture while the window is unfocused.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Vanish Mode Active Status Banner */}
+                      {isVanishActive && (
+                        <div style={{
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                          color: '#f87171',
+                          padding: '8px 14px',
+                          borderRadius: '10px',
+                          marginBottom: '14px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backdropFilter: 'blur(8px)',
+                          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.1)'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Flame size={16} />
+                            <span>
+                              🔥 Vanish Mode Active • Enabled by {vanishOwner === currentUser?.username ? 'You' : vanishOwner}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '11px', fontWeight: 'normal', opacity: 0.9 }}>
+                            🛡️ Anti-Screenshot Protected • Auto-deletes in 30s
+                          </span>
+                        </div>
+                      )}
+
+                      {activeChatMessages.map(msg => (
                     <div 
                       key={msg.id} 
                       className={`message-wrapper ${msg.sender === 'me' ? 'sent' : 'received'}`}
@@ -3814,8 +4411,32 @@ function App() {
                           </div>
                         )}
 
+                        {/* Self-Destruct / Ephemeral message badge */}
+                        {(msg.selfDestructSeconds || msg.expiresAt) && (
+                          <div style={{ fontSize: '10px', color: '#ef4444', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px', marginBottom: '4px', backgroundColor: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            <Flame size={11} /> Disappearing Message ({msg.selfDestructSeconds || 30}s)
+                          </div>
+                        )}
+
                         {msg.text === "DELETED" ? (
                           <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>🚫 Message deleted</span>
+                        ) : msg.messageType === 'LOCATION' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', backgroundColor: 'rgba(6,182,212,0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(6,182,212,0.3)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold', color: '#06b6d4', fontSize: '13px' }}>
+                              <MapPin size={16} /> Field Location Pin
+                            </div>
+                            <div style={{ fontSize: '12px' }}>{msg.text}</div>
+                            {msg.latitude && msg.longitude && (
+                              <a 
+                                href={`https://www.google.com/maps?q=${msg.latitude},${msg.longitude}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--primary)', fontSize: '11px', fontWeight: 'bold', marginTop: '4px', textDecoration: 'underline' }}
+                              >
+                                View on Satellite Map ↗
+                              </a>
+                            )}
+                          </div>
                         ) : msg.messageType === 'CALL' ? (
                           renderCallMessageCard(msg)
                         ) : msg.isMedia ? (
@@ -3859,7 +4480,9 @@ function App() {
                             <div className="message-meta" style={{ margin: 0 }}>
                               {msg.timestamp}
                               {msg.sender === 'me' && msg.text !== "DELETED" && (
-                                msg.status === 'read' ? <CheckCheck size={12} style={{ color: 'var(--primary)' }} /> : <Check size={12} />
+                                msg.status === 'read'
+                                  ? <CheckCheck size={12} style={{ color: msg.selfDestructSeconds || msg.expiresAt ? '#ef4444' : 'var(--primary)' }} />
+                                  : <Check size={12} style={{ color: msg.selfDestructSeconds || msg.expiresAt ? '#f87171' : 'rgba(255,255,255,0.55)' }} />
                               )}
                             </div>
                           </div>

@@ -63,6 +63,13 @@ public class MessageController {
                 .callDuration(savedMessage.getCallDuration())
                 .callStartedAt(savedMessage.getCallStartedAt())
                 .callEndedAt(savedMessage.getCallEndedAt())
+                .iv(savedMessage.getIv())
+                .selfDestructSeconds(savedMessage.getSelfDestructSeconds())
+                .expiresAt(savedMessage.getExpiresAt())
+                .readAt(savedMessage.getReadAt())
+                .isPriority(savedMessage.isPriority())
+                .latitude(savedMessage.getLatitude())
+                .longitude(savedMessage.getLongitude())
                 .build();
 
         if (savedMessage.getGroup() != null) {
@@ -168,6 +175,13 @@ public class MessageController {
                         .callEndedAt(msg.getCallEndedAt())
                         .groupId(msg.getGroup() != null ? msg.getGroup().getId() : null)
                         .groupName(msg.getGroup() != null ? msg.getGroup().getName() : null)
+                        .iv(msg.getIv())
+                        .selfDestructSeconds(msg.getSelfDestructSeconds())
+                        .expiresAt(msg.getExpiresAt())
+                        .readAt(msg.getReadAt())
+                        .isPriority(msg.isPriority())
+                        .latitude(msg.getLatitude())
+                        .longitude(msg.getLongitude())
                         .build())
                 .collect(Collectors.toList());
 
@@ -370,6 +384,34 @@ public class MessageController {
         messagingTemplate.convertAndSend("/topic/messages/" + saved.getSender().getUsername(), notification);
 
         return ResponseEntity.ok(Map.of("id", saved.getId(), "reactions", saved.getReactions() != null ? saved.getReactions() : ""));
+    }
+
+    @DeleteMapping("/api/messages/panic-wipe")
+    public ResponseEntity<?> panicWipeUserMessages(Principal principal) {
+        if (principal != null) {
+            String username = principal.getName();
+            com.whatsappclone.model.User user = userRepository.findByUsernameIgnoreCase(username).orElse(null);
+            if (user != null) {
+                List<Message> messagesToDelete = messageRepository.findMessagesInvolvingUser(user);
+                for (Message msg : messagesToDelete) {
+                    Map<String, Object> deletionEvent = Map.of(
+                            "type", "MESSAGE_DELETED",
+                            "reason", "PANIC_WIPE",
+                            "messageId", msg.getId(),
+                            "content", "DELETED"
+                    );
+                    if (msg.getSender() != null) {
+                        messagingTemplate.convertAndSend("/topic/messages/" + msg.getSender().getUsername(), deletionEvent);
+                    }
+                    if (msg.getReceiver() != null) {
+                        messagingTemplate.convertAndSend("/topic/messages/" + msg.getReceiver().getUsername(), deletionEvent);
+                    }
+                }
+            }
+            messageService.wipeUserMessages(username);
+            return ResponseEntity.ok(Map.of("message", "Emergency panic wipe executed successfully. All chat session data purged."));
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Unauthorized"));
     }
 
     public static record PartnerDto(

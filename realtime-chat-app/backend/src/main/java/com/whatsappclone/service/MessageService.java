@@ -2,6 +2,7 @@ package com.whatsappclone.service;
 
 import com.whatsappclone.model.Message;
 import com.whatsappclone.model.User;
+import com.whatsappclone.repo.ConversationVanishModeRepository;
 import com.whatsappclone.repo.MessageRepository;
 import com.whatsappclone.repo.UserRepository;
 import com.whatsappclone.dto.MessageDto;
@@ -17,6 +18,7 @@ public class MessageService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final com.whatsappclone.repo.ChatGroupRepository chatGroupRepository;
+    private final ConversationVanishModeRepository conversationVanishModeRepository;
 
     public Message saveMessage(String senderUsername, String receiverUsername, String content) {
         User sender = userRepository.findByUsernameIgnoreCase(senderUsername)
@@ -68,6 +70,12 @@ public class MessageService {
                 .mediaType(dto.getMediaType())
                 .fileName(dto.getFileName())
                 .fileSize(dto.getFileSize())
+                .iv(dto.getIv())
+                .selfDestructSeconds(resolveVanishDuration(sender.getUsername(), receiver != null ? receiver.getUsername() : null, group != null ? group.getId() : null))
+                .isPriority(dto.isPriority())
+                .latitude(dto.getLatitude())
+                .longitude(dto.getLongitude())
+                .messageType(dto.getMessageType() != null ? dto.getMessageType() : "TEXT")
                 .build();
 
         return messageRepository.save(message);
@@ -101,6 +109,39 @@ public class MessageService {
         return new java.util.ArrayList<>(uniquePartners.values());
     }
 
+    private Integer resolveVanishDuration(String senderUsername, String receiverUsername, Long groupId) {
+        String conversationKey = groupId != null
+                ? buildGroupConversationKey(groupId)
+                : buildDirectConversationKey(senderUsername, receiverUsername);
+        return conversationVanishModeRepository.findByConversationKey(conversationKey)
+                .filter(com.whatsappclone.model.ConversationVanishMode::isEnabled)
+                .map(state -> 30)
+                .orElse(null);
+    }
+
+    private String buildDirectConversationKey(String participantA, String participantB) {
+        java.util.List<String> participants = new java.util.ArrayList<>();
+        pushParticipant(participants, participantA);
+        pushParticipant(participants, participantB);
+        java.util.Collections.sort(participants);
+        return participants.isEmpty() ? "" : "direct:" + String.join("|", participants);
+    }
+
+    private String buildGroupConversationKey(Long groupId) {
+        return "group:" + groupId;
+    }
+
+    private void pushParticipant(java.util.List<String> participants, String value) {
+        String normalized = normalize(value);
+        if (!normalized.isEmpty() && !participants.contains(normalized)) {
+            participants.add(normalized);
+        }
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
+    }
+
     public Message getMessageById(Long id) {
         return messageRepository.findById(id).orElse(null);
     }
@@ -119,9 +160,32 @@ public class MessageService {
         if (sender != null && receiver != null) {
             List<Message> unread = messageRepository.findUnreadMessages(sender, receiver);
             if (!unread.isEmpty()) {
-                unread.forEach(msg -> msg.setStatus("read"));
+                java.time.LocalDateTime now = java.time.LocalDateTime.now();
+                unread.forEach(msg -> {
+                    msg.setStatus("read");
+                    msg.setReadAt(now);
+                    // Start self-destruct countdown upon reading if selfDestructSeconds is present
+                    if (msg.getSelfDestructSeconds() != null && msg.getSelfDestructSeconds() > 0 && msg.getExpiresAt() == null) {
+                        msg.setExpiresAt(now.plusSeconds(msg.getSelfDestructSeconds()));
+                    }
+                });
                 messageRepository.saveAll(unread);
             }
+        }
+    }
+
+    public void wipeUserMessages(String username) {
+        User user = userRepository.findByUsernameIgnoreCase(username).orElse(null);
+        if (user != null) {
+            messageRepository.wipeAllUserMessages(user);
+        }
+    }
+
+    public void wipeChatHistory(String username1, String username2) {
+        User user1 = userRepository.findByUsernameIgnoreCase(username1).orElse(null);
+        User user2 = userRepository.findByUsernameIgnoreCase(username2).orElse(null);
+        if (user1 != null && user2 != null) {
+            messageRepository.wipeChatHistory(user1, user2);
         }
     }
 

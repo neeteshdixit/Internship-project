@@ -1,3 +1,9 @@
+@media print {
+  body.vanish-active {
+    display: none !important;
+  }
+}
+
 /* ── AUTH ── */
 .app-container { display:flex; height:100vh; width:100vw; background:var(--bg-darker); justify-content:center; align-items:center; }
 .auth-container { width:100%; max-width:420px; padding:2.5rem; border-radius:16px; box-shadow:var(--shadow-lg); display:flex; flex-direction:column; gap:1.5rem; margin:1rem; background:var(--bg-dark); }
