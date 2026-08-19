@@ -1,34 +1,39 @@
-import React from 'react';
-import { PhoneOutgoing, PhoneIncoming, Video, Phone } from 'lucide-react';
+﻿import React, { useEffect } from 'react';
+import { useChat } from '../../context/ChatContext';
+import { Phone, Video, PhoneIncoming, PhoneMissed, PhoneOff } from 'lucide-react';
 
 export default function CallsPanel() {
-  const dummyCalls = [
-    { id: 1, name: 'Rahul Sharma', type: 'outgoing', mode: 'video', time: 'Today, 11:30 AM', status: 'Connected' },
-    { id: 2, name: 'Amit Verma', type: 'incoming', mode: 'audio', time: 'Yesterday, 4:15 PM', status: 'Missed' },
-  ];
+  const { callHistory } = useChat();
+
+  const getIcon = (call) => {
+    if (call.status === 'MISSED') return <PhoneMissed size={16} color="#ef4444" />;
+    if (call.status === 'REJECTED') return <PhoneOff size={16} color="#ef4444" />;
+    if (call.direction === 'INCOMING') return <PhoneIncoming size={16} color="#00a884" />;
+    return call.callType === 'VIDEO' ? <Video size={16} color="#00a884" /> : <Phone size={16} color="#00a884" />;
+  };
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px', backgroundColor: 'var(--bg-darker)' }}>
-      <h3 style={{ color: 'var(--text-main)', fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>Call History</h3>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {dummyCalls.map(call => (
-          <div key={call.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', padding: '12px', backgroundColor: 'var(--bg-dark)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--hover-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-                {call.mode === 'video' ? <Video size={20} /> : <Phone size={20} />}
-              </div>
-              <div>
-                <h4 style={{ color: 'var(--text-main)', fontSize: '14px', fontWeight: '600' }}>{call.name}</h4>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                  {call.type === 'outgoing' ? <PhoneOutgoing size={12} color="var(--primary)" /> : <PhoneIncoming size={12} color="#ef4444" />}
-                  <span>{call.time}</span>
-                </div>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#111b21', color: '#e9edef' }}>
+      <div style={{ padding: '16px', backgroundColor: '#202c33', borderBottom: '1px solid #222d34', fontSize: '16px', fontWeight: 600 }}>Calls</div>
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {callHistory.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#8696a0', fontSize: '13px' }}>
+            <Phone size={40} color="#2a3942" style={{ marginBottom: '12px' }} />
+            <div>No call history yet.</div>
+            <div style={{ marginTop: '6px', fontSize: '12px' }}>Start a call from any chat.</div>
+          </div>
+        ) : callHistory.map((call, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderBottom: '1px solid #1e2d35' }}>
+            <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(call.otherUser || 'U')}&background=2a3942&color=aebac1&size=44`} alt="" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '3px' }}>@{call.otherUser || 'Unknown'}</div>
+              <div style={{ fontSize: '12px', color: call.status === 'MISSED' ? '#ef4444' : '#8696a0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {getIcon(call)}
+                {call.direction === 'INCOMING' ? 'Incoming' : 'Outgoing'} {call.callType === 'VIDEO' ? 'Video' : 'Audio'} Call
+                {call.duration && ` · ${Math.floor(call.duration / 60)}:${String(call.duration % 60).padStart(2, '0')}`}
               </div>
             </div>
-            <button style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: '8px' }}>
-              <Phone size={18} />
-            </button>
+            <div style={{ fontSize: '11px', color: '#8696a0' }}>{call.timestamp ? new Date(call.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
           </div>
         ))}
       </div>

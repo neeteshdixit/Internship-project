@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider, useUI } from './context/UIContext';
 import { ChatProvider } from './context/ChatContext';
@@ -10,9 +10,21 @@ import ChatWindow from './components/ChatWindow/ChatWindow';
 
 import ProfileModal from './components/modals/ProfileModal';
 import GroupModal from './components/modals/GroupModal';
-import AIModal from './components/modals/AIModal';
-import MediaModal from './components/modals/MediaModal';
 import ScheduledModal from './components/modals/ScheduledModal';
+import StarredModal from './components/modals/StarredModal';
+import VanishModeModal from './components/modals/VanishModeModal';
+import MediaGalleryModal from './components/modals/MediaGalleryModal';
+import ExportChatModal from './components/modals/ExportChatModal';
+import ConversationControlModal from './components/modals/ConversationControlModal';
+import UniversalSearchModal from './components/modals/UniversalSearchModal';
+import DeviceSyncModal from './components/modals/DeviceSyncModal';
+import MessageRecoveryModal from './components/modals/MessageRecoveryModal';
+import StorageManagerModal from './components/modals/StorageManagerModal';
+import ChatLockModal from './components/modals/ChatLockModal';
+import ChatTimelineModal from './components/modals/ChatTimelineModal';
+
+import IncomingCallOverlay from './components/calls/IncomingCallOverlay';
+import ActiveCallWindow from './components/calls/ActiveCallWindow';
 
 const MainContent = () => {
   const { isAuthenticated, loading, login, register } = useAuth();
@@ -74,7 +86,7 @@ const MainContent = () => {
         left: 0,
         margin: 0,
         padding: '20px',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
       }}>
         <AuthContainer
           authMode={authMode}
@@ -95,18 +107,31 @@ const MainContent = () => {
     );
   }
 
-  // Dashboard layout with Modals
+  // Main Dashboard layout
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#0b141a' }}>
       <Sidebar />
       <ChatWindow />
 
+      {/* Voice & Video Call Overlays */}
+      <IncomingCallOverlay />
+      <ActiveCallWindow />
+
       {/* Dynamic Modals */}
-      {modals.profile && <ProfileModal />}
-      {modals.group && <GroupModal />}
-      {modals.ai && <AIModal />}
-      {modals.media && <MediaModal />}
-      {modals.scheduled && <ScheduledModal />}
+      {modals?.profile && <ProfileModal />}
+      {modals?.group && <GroupModal />}
+      {modals?.scheduled && <ScheduledModal />}
+      {modals?.starred && <StarredModal />}
+      {modals?.vanish && <VanishModeModal />}
+      {modals?.mediaGallery && <MediaGalleryModal />}
+      {modals?.exportChat && <ExportChatModal />}
+      {modals?.conversationControl && <ConversationControlModal />}
+      {modals?.universalSearch && <UniversalSearchModal />}
+      {modals?.deviceSync && <DeviceSyncModal />}
+      {modals?.messageRecovery && <MessageRecoveryModal />}
+      {modals?.storageManager && <StorageManagerModal />}
+      {modals?.chatLock && <ChatLockModal />}
+      {modals?.chatTimeline && <ChatTimelineModal />}
     </div>
   );
 };

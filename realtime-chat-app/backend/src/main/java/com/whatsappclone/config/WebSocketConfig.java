@@ -13,14 +13,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                // Vite can run on 5173 or fall back to 5174 if 5173 is busy.
                 .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
                 .withSockJS();
     }
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
+        // FIXED: Enabled /queue broker and set user destination prefix for private routing
+        registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
+        registry.setUserDestinationPrefix("/user");
     }
 }
