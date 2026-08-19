@@ -46,10 +46,14 @@ public class UserController {
 
     // 1. Search users by mobile/username
     @GetMapping("/search")
-    public ResponseEntity<?> searchByPhoneNumber(@RequestParam(name = "mobile", required = false) String mobile,
+    public ResponseEntity<?> searchByPhoneNumber(@RequestParam(name = "query", required = false) String qParam,
+                                                @RequestParam(name = "q", required = false) String qShort,
+                                                @RequestParam(name = "mobile", required = false) String mobile,
                                                 @RequestParam(name = "phone", required = false) String phone,
                                                 @RequestParam(name = "phoneNumber", required = false) String phoneNumber) {
-        String query = (mobile != null && !mobile.isBlank()) ? mobile :
+        String query = (qParam != null && !qParam.isBlank()) ? qParam :
+                       (qShort != null && !qShort.isBlank()) ? qShort :
+                       (mobile != null && !mobile.isBlank()) ? mobile :
                        (phone != null && !phone.isBlank()) ? phone : phoneNumber;
         if (query != null) {
             query = query.trim();
@@ -103,7 +107,32 @@ public class UserController {
                 .body(Map.of("error", "No user found matching this query."));
     }
 
-    // 2. Get all users (fallback/directory list)
+    // 2. Get current authenticated user's profile (for session restore)
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
+        }
+        String currentUsername = principal.getName();
+        User user = userRepository.findByUsername(currentUsername).orElse(null);
+        if (user == null) {
+            var list = userRepository.findAllByUsernameIgnoreCase(currentUsername);
+            if (!list.isEmpty()) user = list.get(0);
+        }
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
+        }
+        return ResponseEntity.ok(new UserDto(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getPhoneNumber(),
+                user.getProfilePicUrl() != null ? user.getProfilePicUrl()
+                        : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
+        ));
+    }
+
+    // 2b. Get all users (fallback/directory list)
     @GetMapping
     public ResponseEntity<List<UserDto>> getAllUsers() {
         List<User> users = userRepository.findAll();

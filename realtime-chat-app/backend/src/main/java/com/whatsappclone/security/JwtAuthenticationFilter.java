@@ -44,36 +44,41 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Token nikalenge. 'Bearer ' total 7 characters ka hai.
-        jwt = authHeader.substring(7);
-        // Token se login username parse/extract karenge
-        username = jwtService.extractUsername(jwt);
+        try {
+            // Token nikalenge. 'Bearer ' total 7 characters ka hai.
+            jwt = authHeader.substring(7);
+            if (jwt != null && !jwt.trim().isEmpty() && !"null".equalsIgnoreCase(jwt) && !"undefined".equalsIgnoreCase(jwt)) {
+                // Token se login username parse/extract karenge
+                username = jwtService.extractUsername(jwt);
 
-        // 2. Agar username mil gaya aur user pehle se authenticated (login) nahi hai Spring Context mein
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            
-            // Database se user details load karenge
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+                // 2. Agar username mil gaya aur user pehle se authenticated (login) nahi hai Spring Context mein
+                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                    
+                    // Database se user details load karenge
+                    UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-            // check standard validity
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-                
-                // Security Authentication token generate karenge authentication set karne ke liye
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-                
-                // Extra request details link karenge context token se
-                authToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
-                
-                // 3. SPRING SECURITY CONTEXT UPDATE:
-                // Is step se Spring Security ko pata chal jayega ki user authenticated hai aur access allow karna hai.
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                    // check standard validity
+                    if (jwtService.isTokenValid(jwt, userDetails)) {
+                        
+                        // Security Authentication token generate karenge authentication set karne ke liye
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                                userDetails,
+                                null,
+                                userDetails.getAuthorities()
+                        );
+                        
+                        // Extra request details link karenge context token se
+                        authToken.setDetails(
+                                new WebAuthenticationDetailsSource().buildDetails(request)
+                        );
+                        
+                        // 3. SPRING SECURITY CONTEXT UPDATE:
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                    }
+                }
             }
+        } catch (Exception e) {
+            logger.warn("JWT processing skipped due to invalid/expired token: " + e.getMessage());
         }
         
         // Filter chain execution complete hone par request aage proceed karne ke liye call karenge

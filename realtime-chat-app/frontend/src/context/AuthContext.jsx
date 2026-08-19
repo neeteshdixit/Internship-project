@@ -1,134 +1,153 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-
-const API_BASE_URL = 'http://localhost:8081';
+import { apiFetch } from '../lib/apiFetch';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authMode, setAuthMode] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!token);
+  const [loading, setLoading] = useState(true);
 
-  // Auth Form Fields
-  const [usernameInput, setUsernameInput] = useState('');
-  const [emailInput, setEmailInput] = useState('');
-  const [phoneInput, setPhoneInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [profilePicInput, setProfilePicInput] = useState('');
-
-  // UI helpers
-  const [errorMsg, setErrorMsg] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
-
-  // Load basic token & profile info on mount
+  // App load hone par current user fetch karna agar token present ho
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    if (savedToken && savedUser) {
-      setIsAuthenticated(true);
-      setCurrentUser(JSON.parse(savedUser));
-    }
-  }, []);
-
-  const handleAuthSubmit = async (e) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setIsLoading(true);
-
-    const baseUrl = `${API_BASE_URL}/api/auth`;
-    const endpoint = authMode === 'login' ? 'login' : 'register';
-
-    const payload = authMode === 'login'
-      ? { identifier: usernameInput, password: passwordInput }
-      : { username: usernameInput, email: emailInput, phoneNumber: phoneInput, password: passwordInput, profilePicUrl: profilePicInput };
-
-    try {
-      const response = await fetch(`${baseUrl}/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Server connection failed!';
-        try {
-          const errData = await response.json();
-          if (errData && errData.error) {
-            errorMessage = errData.error;
-            if (errData.details) {
-              const details = Object.entries(errData.details)
-                .map(([field, msg]) => `${field}: ${msg}`)
-                .join(', ');
-              errorMessage += ` (${details})`;
-            }
-          }
-        } catch (e) {
-          if (response.status === 403) {
-            errorMessage = 'Unauthorized access / Invalid Credentials (ya fir duplicate registration).';
-          }
-        }
-        throw new Error(errorMessage);
+    const fetchUserProfile = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
       }
 
-      const data = await response.json();
-      localStorage.setItem('token', data.token);
-      const profile = {
-        id: data.id,
-        username: data.username,
-        email: data.email,
-        phoneNumber: data.phoneNumber,
-        profilePicUrl: data.profilePicUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100'
-      };
-      localStorage.setItem('user', JSON.stringify(profile));
-      setCurrentUser(profile);
-      setIsAuthenticated(true);
-      setIsDemoMode(false);
-    } catch (err) {
-      console.error('Authentication error:', err);
-      setErrorMsg(err.message || 'Failed to authenticate. Server is unreachable.');
-    } finally {
-      setIsLoading(false);
+      // First try to restore from localStorage cache (instant, no network)
+      const cached = localStorage.getItem('currentUser');
+      if (cached) {
+        try {
+          setCurrentUser(JSON.parse(cached));
+          setIsAuthenticated(true);
+          setLoading(false);
+        } catch {}
+      }
+
+      try {
+        const data = await apiFetch('/api/users/me');
+        setCurrentUser(data);
+        // Update localStorage cache with fresh data
+        localStorage.setItem('currentUser', JSON.stringify(data));
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Session expired or invalid token:', error);
+        // Only logout if we couldn't restore from cache either
+        if (!cached) {
+          logout();
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [token]);
+
+  // Login handler
+  const login = async (username, password) => {
+    try {
+      const response = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+        // Also store user info for quick access
+        localStorage.setItem('currentUser', JSON.stringify({
+          id: response.id,
+          username: response.username,
+          email: response.email,
+          phoneNumber: response.phoneNumber,
+          profilePicUrl: response.profilePicUrl,
+        }));
+        setToken(response.token);
+        setCurrentUser({
+          id: response.id,
+          username: response.username,
+          email: response.email,
+          phoneNumber: response.phoneNumber,
+          profilePicUrl: response.profilePicUrl,
+        });
+        setIsAuthenticated(true);
+        return { success: true };
+      }
+      return { success: false, message: 'Invalid response from server' };
+    } catch (error) {
+      console.error('Login failed:', error);
+      return { success: false, message: error.message || 'Login failed' };
     }
   };
 
-  const handleLogout = (stompClientRef) => {
-    if (stompClientRef?.current) {
-      stompClientRef.current.publish({
-        destination: '/app/presence/disconnect',
-        body: currentUser?.username || ''
+  // Register handler
+  const register = async (userData) => {
+    try {
+      const response = await apiFetch('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(userData),
       });
-      stompClientRef.current.deactivate();
+
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+        localStorage.setItem('currentUser', JSON.stringify({
+          id: response.id,
+          username: response.username,
+          email: response.email,
+          phoneNumber: response.phoneNumber,
+          profilePicUrl: response.profilePicUrl,
+        }));
+        setToken(response.token);
+        setCurrentUser({
+          id: response.id,
+          username: response.username,
+          email: response.email,
+          phoneNumber: response.phoneNumber,
+          profilePicUrl: response.profilePicUrl,
+        });
+        setIsAuthenticated(true);
+        return { success: true };
+      }
+      return { success: false, message: 'Registration failed' };
+    } catch (error) {
+      console.error('Registration failed:', error);
+      return { success: false, message: error.message || 'Registration failed' };
     }
+  };
+
+  // Logout handler
+  const logout = () => {
     localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setIsAuthenticated(false);
+    localStorage.removeItem('currentUser');
+    setToken(null);
     setCurrentUser(null);
+    setIsAuthenticated(false);
   };
 
   return (
-    <AuthContext.Provider value={{
-      isAuthenticated, setIsAuthenticated,
-      authMode, setAuthMode,
-      currentUser, setCurrentUser,
-      usernameInput, setUsernameInput,
-      emailInput, setEmailInput,
-      phoneInput, setPhoneInput,
-      passwordInput, setPasswordInput,
-      profilePicInput, setProfilePicInput,
-      errorMsg, setErrorMsg,
-      isLoading,
-      isDemoMode, setIsDemoMode,
-      handleAuthSubmit,
-      handleLogout
-    }}>
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        token,
+        isAuthenticated,
+        loading,
+        login,
+        register,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
 
 export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

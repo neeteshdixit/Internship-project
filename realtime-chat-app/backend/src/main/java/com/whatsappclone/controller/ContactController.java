@@ -63,6 +63,26 @@ public class ContactController {
         if (contactUser == null) {
             contactUser = userRepository.findByUsernameIgnoreCase(request.getPhoneNumber()).orElse(null);
         }
+        // fallback to digit-normalized phone match
+        if (contactUser == null && request.getPhoneNumber() != null) {
+            String digits = request.getPhoneNumber().replaceAll("\\D", "");
+            if (!digits.isBlank()) {
+                List<User> allUsers = userRepository.findAll();
+                contactUser = allUsers.stream()
+                        .filter(u -> {
+                            if (u.getPhoneNumber() == null) return false;
+                            String uDigits = u.getPhoneNumber().replaceAll("\\D", "");
+                            if (uDigits.isBlank()) return false;
+                            if (uDigits.equals(digits)) return true;
+                            if (digits.length() >= 10 && uDigits.length() >= 10) {
+                                return uDigits.substring(uDigits.length() - 10).equals(digits.substring(digits.length() - 10));
+                            }
+                            return uDigits.endsWith(digits) || digits.endsWith(uDigits);
+                        })
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
 
         if (contactUser == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No user found."));

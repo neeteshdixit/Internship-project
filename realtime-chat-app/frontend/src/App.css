@@ -31,9 +31,7 @@
    Column 3: active chat   (fills rest)
 */
 .dashboard-layout {
-  display: grid !important;
-  grid-template-columns: 70px 360px minmax(0,1fr) !important;
-  grid-template-rows: 100vh;
+  display: flex !important;
   width: 100vw;
   height: 100vh;
   overflow: hidden;

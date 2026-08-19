@@ -155,3 +155,108 @@ select {
 .btn-hover-grow { transition: transform var(--transition-fast), background-color var(--transition-fast); }
 .btn-hover-grow:hover  { transform: translateY(-1px); }
 .btn-hover-grow:active { transform: translateY(1px); }
+
+/* Additional Auth Layout Helpers */
+.auth-container {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.auth-header h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: 6px;
+}
+
+.auth-header p {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.error-banner {
+  background: rgba(248, 81, 73, 0.15);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.input-group input:focus {
+  border-color: var(--primary);
+}
+
+.auth-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--primary);
+  color: var(--text-light);
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.auth-btn:hover {
+  background: var(--primary-hover);
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.auth-link {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}

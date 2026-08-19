@@ -1,27 +1,22 @@
-/**
- * API utility — token-aware fetch wrapper
- */
-const API_BASE_URL = 'http://localhost:8081';
-
-export const apiFetch = async (path, options = {}) => {
+export const apiFetch = async (endpoint, options = {}) => {
   const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const response = await fetch(`http://localhost:8081${endpoint}`, {
     ...options,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.message || `API error ${response.status}`);
+    throw new Error(errorData.message || `API Error: ${response.statusText}`);
   }
 
-  // Handle 204 No Content
   const text = await response.text();
   return text ? JSON.parse(text) : null;
 };
-
-export { API_BASE_URL };

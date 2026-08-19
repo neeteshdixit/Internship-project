@@ -44,7 +44,6 @@ function resolvePrimaryChatIdentifier(chatIdentifier) {
         }
         return null;
     }
-
     return chatIdentifier;
 }
 
@@ -55,7 +54,6 @@ export async function getOrCreateChatKey(chatIdentifier) {
     let rawKeyBase64 = sessionStorage.getItem(storageKey);
 
     if (!rawKeyBase64) {
-        // Create deterministic seed from chat identifier for instant key agreement
         const encoder = new TextEncoder();
         const keyMaterial = await window.crypto.subtle.digest(
             "SHA-256",
@@ -89,7 +87,7 @@ export async function encryptPayload(plainText, chatIdentifier) {
     try {
         const cryptoKey = await getOrCreateChatKey(chatIdentifier);
         const encoder = new TextEncoder();
-        const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for AES-GCM
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
         const encryptedBuffer = await window.crypto.subtle.encrypt(
             {
@@ -135,14 +133,12 @@ export async function decryptPayload(ciphertext, ivBase64, chatIdentifier) {
 
                 return decoder.decode(decryptedBuffer);
             } catch (candidateErr) {
-                // Try the next candidate key. Legacy chats can be encrypted under
-                // older identifiers, so we intentionally fall through.
+                // Fallback to next key candidate
             }
         }
 
         return ciphertext;
     } catch (err) {
-        // If decryption fails (e.g. legacy plain text message), return original content safely
         return ciphertext;
     }
 }

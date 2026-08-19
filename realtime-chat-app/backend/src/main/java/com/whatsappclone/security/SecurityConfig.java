@@ -37,8 +37,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             // 1.3. API request routes settings:
             .authorizeHttpRequests(auth -> auth
-                // Registration, Login, and WebSocket paths are public (permitted)
-                .requestMatchers("/api/auth/**", "/ws/**").permitAll()
+                // Registration, Login, User Search, and WebSocket paths are public (permitted)
+                .requestMatchers("/api/auth/**", "/ws/**", "/api/users/search").permitAll()
                 // Kisi bhi aur REST API request (like /api/chats) ko security verify karne ke liye user validation token mandatory hai.
                 .anyRequest().authenticated()
             )
