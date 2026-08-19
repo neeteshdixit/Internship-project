@@ -213,7 +213,7 @@ export const ChatProvider = ({ children }) => {
   // WebSocket Connection
   useEffect(() => {
     if (!currentUser || !token) return;
-    const socket = new SockJS('http://localhost:8081/ws');
+    const socket = new SockJS(`${import.meta.env.VITE_API_URL}/ws`);
     const client = new Client({
       webSocketFactory: () => socket,
       connectHeaders: { Authorization: `Bearer ${token}` },
@@ -308,7 +308,7 @@ export const ChatProvider = ({ children }) => {
     const formData = new FormData();
     formData.append('file', file);
     const token = localStorage.getItem('token');
-    const response = await fetch('http://localhost:8081/api/media/upload', {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/media/upload`, {
       method: 'POST',
       headers: {
         ...(token && { Authorization: `Bearer ${token}` }),
