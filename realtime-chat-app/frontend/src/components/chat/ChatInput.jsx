@@ -67,7 +67,7 @@ function GifPicker({ onSelect, onClose }) {
     setLoading(true);
     try {
       // Using Tenor API v2 with free key (client-side public key)
-      const TENOR_KEY = 'AIzaSyAyimkuEcdULnqu84s6b1zh9AAF6rFqBn4'; // public demo key
+      const TENOR_KEY = ''; // public demo key
       const res = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q || 'funny')}&key=${TENOR_KEY}&limit=20&media_filter=gif`);
       const data = await res.json();
       const urls = (data.results || []).map(r => ({
