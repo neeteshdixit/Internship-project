@@ -138,38 +138,75 @@ public class UserController {
     }
 
     // 2c. Delete current authenticated user's account permanently
-    @DeleteMapping("/me")
-    public ResponseEntity<?> deleteCurrentUser(Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
-        }
-        String currentUsername = principal.getName();
-        User user = userRepository.findByUsername(currentUsername).orElse(null);
-        if (user == null) {
-            var list = userRepository.findAllByUsernameIgnoreCase(currentUsername);
-            if (!list.isEmpty()) user = list.get(0);
-        }
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
-        }
-        try {
-            // 1. PrivacySettings delete karo
-            privacySettingsRepository.findByUser(user).ifPresent(privacySettingsRepository::delete);
+@DeleteMapping("/me")
+public ResponseEntity<?> deleteCurrentUser(Principal principal) {
 
-            // 2. Contacts delete karo (jahan yeh user owner hai)
-            contactRepository.deleteAllByOwner(user);
+    if (principal == null) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("error", "Not authenticated"));
+    }
 
-            // 3. User delete karo
-            userRepository.delete(user);
+    String currentUsername = principal.getName();
 
-            log.info("Account deleted for user: {}", currentUsername);
-            return ResponseEntity.ok(Map.of("message", "Account successfully deleted"));
-        } catch (Exception e) {
-            log.error("Error deleting account for user: {}", currentUsername, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Account delete karne mein error aaya: " + e.getMessage()));
+    User user = userRepository
+            .findByUsername(currentUsername)
+            .orElse(null);
+
+    if (user == null) {
+        var list = userRepository.findAllByUsernameIgnoreCase(currentUsername);
+
+        if (!list.isEmpty()) {
+            user = list.get(0);
         }
     }
+
+    if (user == null) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "User not found"));
+    }
+
+    try {
+
+        // 1. Delete privacy settings
+        privacySettingsRepository
+                .findByUser(user)
+                .ifPresent(privacySettingsRepository::delete);
+
+        // 2. Delete contacts owned by this user
+        contactRepository.deleteAllByOwner(user);
+
+        // 3. Delete contacts where this user
+        //    is referenced as contactUser
+        contactRepository.deleteAllByContactUser(user);
+
+        // 4. Finally delete the user
+        userRepository.delete(user);
+
+        log.info("Account deleted successfully for user: {}", currentUsername);
+
+        return ResponseEntity.ok(
+                Map.of("message", "Account successfully deleted")
+        );
+
+    } catch (Exception e) {
+
+        log.error(
+                "Error deleting account for user: {}",
+                currentUsername,
+                e
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                        "error",
+                        "Account delete karne mein error aaya: "
+                                + e.getMessage()
+                ));
+    }
+}
 
     // 2b. Get all users (fallback/directory list)
     @GetMapping
