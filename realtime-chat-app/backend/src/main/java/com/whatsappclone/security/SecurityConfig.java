@@ -37,8 +37,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             // 1.3. API request routes settings:
             .authorizeHttpRequests(auth -> auth
-                // Registration, Login, User Search, and WebSocket paths are public (permitted)
-                .requestMatchers("/api/auth/**", "/ws/**", "/api/users/search").permitAll()
+                // Registration, Login, User Search, Media, and WebSocket paths are public (permitted)
+                .requestMatchers("/api/auth/**", "/ws", "/ws/**", "/api/users/search", "/api/users/profile-image/**", "/api/media/**", "/error").permitAll()
                 // Kisi bhi aur REST API request (like /api/chats) ko security verify karne ke liye user validation token mandatory hai.
                 .anyRequest().authenticated()
             )
@@ -59,9 +59,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:5174","https://internship-project-xi.vercel.app")); // React standard ports allowed
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
         configuration.setAllowCredentials(true);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -12,14 +12,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // 1. SockJS fallback endpoint with wildcard allowed origin patterns to prevent 403 on /ws/info
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
+                .setAllowedOriginPatterns("*")
                 .withSockJS();
+
+        // 2. Direct WebSocket endpoint without SockJS wrapper
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns("*");
     }
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        // FIXED: Enabled /queue broker and set user destination prefix for private routing
+        // Enable /topic and /queue broker for pub/sub and direct messaging
         registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");

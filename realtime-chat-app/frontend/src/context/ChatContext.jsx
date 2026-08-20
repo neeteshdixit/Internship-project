@@ -1,8 +1,8 @@
-﻿import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useAuth } from './AuthContext';
-import { apiFetch } from '../lib/apiFetch';
+import { apiFetch, getApiBaseUrl } from '../lib/apiFetch';
 import { encryptPayload, decryptPayload } from '../crypto/cryptoEngine';
 
 const ChatContext = createContext(null);
@@ -213,7 +213,8 @@ export const ChatProvider = ({ children }) => {
   // WebSocket Connection
   useEffect(() => {
     if (!currentUser || !token) return;
-    const socket = new SockJS(`${import.meta.env.VITE_API_URL}/ws`);
+    const baseUrl = getApiBaseUrl();
+    const socket = new SockJS(`${baseUrl}/ws`);
     const client = new Client({
       webSocketFactory: () => socket,
       connectHeaders: { Authorization: `Bearer ${token}` },
@@ -308,7 +309,8 @@ export const ChatProvider = ({ children }) => {
     const formData = new FormData();
     formData.append('file', file);
     const token = localStorage.getItem('token');
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/media/upload`, {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}/api/media/upload`, {
       method: 'POST',
       headers: {
         ...(token && { Authorization: `Bearer ${token}` }),

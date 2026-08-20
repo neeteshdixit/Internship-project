@@ -110,26 +110,31 @@ public class UserController {
     // 2. Get current authenticated user's profile (for session restore)
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(Principal principal) {
-        if (principal == null) {
+        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not authenticated"));
         }
-        String currentUsername = principal.getName();
-        User user = userRepository.findByUsername(currentUsername).orElse(null);
-        if (user == null) {
-            var list = userRepository.findAllByUsernameIgnoreCase(currentUsername);
-            if (!list.isEmpty()) user = list.get(0);
+        try {
+            String currentUsername = principal.getName();
+            User user = userRepository.findByUsername(currentUsername).orElse(null);
+            if (user == null) {
+                var list = userRepository.findAllByUsernameIgnoreCase(currentUsername);
+                if (!list.isEmpty()) user = list.get(0);
+            }
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found or deleted"));
+            }
+            return ResponseEntity.ok(new UserDto(
+                    user.getId(),
+                    user.getUsername(),
+                    user.getEmail(),
+                    user.getPhoneNumber(),
+                    user.getProfilePicUrl() != null ? user.getProfilePicUrl()
+                            : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
+            ));
+        } catch (Exception e) {
+            log.error("Error retrieving user profile for principal: {}", principal.getName(), e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found: " + e.getMessage()));
         }
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found"));
-        }
-        return ResponseEntity.ok(new UserDto(
-                user.getId(),
-                user.getUsername(),
-                user.getEmail(),
-                user.getPhoneNumber(),
-                user.getProfilePicUrl() != null ? user.getProfilePicUrl()
-                        : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100"
-        ));
     }
 
     // 2c. Delete current authenticated user's account permanently
