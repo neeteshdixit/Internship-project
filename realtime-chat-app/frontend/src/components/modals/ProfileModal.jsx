@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
-import { X, User, Phone, Mail, FileText, Image, Camera, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, User, Phone, Mail, FileText, Camera, Trash2 } from 'lucide-react';
 import { useUI } from '../../context/UIContext';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -7,7 +7,7 @@ import { apiFetch } from '../../lib/apiFetch';
 
 export default function ProfileModal() {
   const { closeModal } = useUI();
-  const { currentUser } = useAuth();
+  const { currentUser, deleteAccount } = useAuth();
   const { uploadFile } = useChat();
 
   const [username, setUsername] = useState(currentUser?.username || '');
@@ -18,6 +18,8 @@ export default function ProfileModal() {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const photoInputRef = useRef(null);
 
@@ -100,6 +102,21 @@ export default function ProfileModal() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+    setIsDeleting(true);
+    const result = await deleteAccount();
+    if (!result.success) {
+      alert('Error: ' + result.message);
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+    // Success par AuthContext logout karega automatically
   };
 
   const s = {
@@ -190,6 +207,48 @@ export default function ProfileModal() {
             <button type="submit" disabled={isLoading || isUploadingPhoto} style={{ flex: 1, padding: '10px', backgroundColor: '#00a884', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
               {isLoading ? 'Saving...' : 'Save Profile'}
             </button>
+          </div>
+
+          {/* Delete Account Section */}
+          <div style={{ borderTop: '1px solid #2a3942', marginTop: '8px', paddingTop: '12px' }}>
+            {showDeleteConfirm ? (
+              <div style={{ backgroundColor: 'rgba(220, 38, 38, 0.1)', border: '1px solid rgba(220, 38, 38, 0.3)', borderRadius: '8px', padding: '12px' }}>
+                <p style={{ color: '#fca5a5', fontSize: '13px', margin: '0 0 10px 0', fontWeight: 600 }}>
+                  ⚠️ Kya aap sure hain? Yeh action permanent hai!
+                </p>
+                <p style={{ color: '#8696a0', fontSize: '12px', margin: '0 0 10px 0' }}>
+                  Aapka account, saari conversations aur data permanently delete ho jaayega.
+                </p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{ flex: 1, padding: '9px', backgroundColor: 'transparent', border: '1px solid #2a3942', borderRadius: '8px', color: '#8696a0', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}
+                  >
+                    Nahi, Wapas Jao
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting}
+                    style={{ flex: 1, padding: '9px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, opacity: isDeleting ? 0.7 : 1 }}
+                  >
+                    {isDeleting ? 'Deleting...' : 'Haan, Delete Karo'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                style={{ width: '100%', padding: '10px', backgroundColor: 'transparent', border: '1px solid rgba(220, 38, 38, 0.5)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontWeight: 500, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', transition: 'all 0.2s' }}
+                onMouseEnter={(e) => { e.target.style.backgroundColor = 'rgba(220, 38, 38, 0.1)'; e.target.style.borderColor = '#dc2626'; }}
+                onMouseLeave={(e) => { e.target.style.backgroundColor = 'transparent'; e.target.style.borderColor = 'rgba(220, 38, 38, 0.5)'; }}
+              >
+                <Trash2 size={14} />
+                Delete Account
+              </button>
+            )}
           </div>
         </form>
       </div>

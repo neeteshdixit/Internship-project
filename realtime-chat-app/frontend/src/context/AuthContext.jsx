@@ -127,6 +127,18 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
+  // Delete Account handler — account permanently delete karega
+  const deleteAccount = async () => {
+    try {
+      await apiFetch('/api/users/me', { method: 'DELETE' });
+      logout();
+      return { success: true };
+    } catch (error) {
+      console.error('Account delete failed:', error);
+      return { success: false, message: error.message || 'Account delete nahi ho saka' };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -137,6 +149,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        deleteAccount,
       }}
     >
       {children}

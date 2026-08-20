@@ -32,9 +32,7 @@ public class AuthService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new UserAlreadyExistsException("Email is already registered");
         }
-        if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
-            throw new UserAlreadyExistsException("Phone number is already registered");
-        }
+        // Note: Phone number unique nahi hai — ek number se multiple accounts allowed hain
 
         User user = User.builder()
                 .username(request.getUsername())
