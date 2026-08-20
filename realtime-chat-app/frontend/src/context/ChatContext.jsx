@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useAuth } from './AuthContext';
@@ -214,7 +214,9 @@ export const ChatProvider = ({ children }) => {
   useEffect(() => {
     if (!currentUser || !token) return;
     const baseUrl = getApiBaseUrl();
-    const socket = new SockJS(`${baseUrl}/ws`);
+    const socket = new SockJS(`${baseUrl}/ws`, null, {
+  transports: ['websocket', 'xhr-streaming', 'xhr-polling'],
+});
     const client = new Client({
       webSocketFactory: () => socket,
       connectHeaders: { Authorization: `Bearer ${token}` },
