@@ -1,5 +1,5 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
-import { Check, CheckCheck, Star, Pin, Trash2, Reply, MapPin, Download, FileText, CornerUpRight, Lock, Copy, Edit2, Play, Pause, ChevronDown } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Check, CheckCheck, Star, Pin, Trash2, Reply, MapPin, Download, FileText, CornerUpRight, Lock, Copy, Edit2, Play, Pause, ChevronDown, Phone, PhoneMissed, PhoneIncoming, PhoneOutgoing, PhoneOff, Video } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 
 const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','🙏','🔥','👏','😍','🎉','💯','😎'];
@@ -189,6 +189,107 @@ export default function MessageBubble({ message, currentUser, onReply }) {
     }
     return null;
   };
+
+  // Dedicated Call Message Bubble (Missed / Offline / Completed Calls)
+  if (message.messageType === 'CALL' || (message.callType && !message.content?.includes(' '))) {
+    const isVideo = (message.callType || '').toUpperCase() === 'VIDEO';
+    const rawStatus = (message.callStatus || message.status || '').toUpperCase();
+    const isMissed = rawStatus === 'MISSED' || rawStatus === 'OFFLINE' || rawStatus === 'NO_ANSWER';
+    const isDeclined = rawStatus === 'REJECTED' || rawStatus === 'BUSY';
+    const isCompleted = rawStatus === 'COMPLETED' || rawStatus === 'CONNECTED';
+    const duration = message.callDuration || 0;
+
+    const formatDur = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
+    let title = '';
+    let subtitle = '';
+    let icon = null;
+
+    if (isMissed) {
+      if (isMe) {
+        title = `Unanswered ${isVideo ? 'video' : 'voice'} call`;
+        subtitle = rawStatus === 'OFFLINE' ? 'User was offline · Notification sent' : 'No answer';
+        icon = isVideo ? <Video size={20} color="#8696a0" /> : <PhoneOutgoing size={20} color="#8696a0" />;
+      } else {
+        title = `Missed ${isVideo ? 'video' : 'voice'} call`;
+        subtitle = rawStatus === 'OFFLINE' ? 'You were offline · Tap to call back' : 'Tap to call back';
+        icon = isVideo ? <Video size={20} color="#ef4444" /> : <PhoneMissed size={20} color="#ef4444" />;
+      }
+    } else if (isDeclined) {
+      title = `${isVideo ? 'Video' : 'Voice'} call declined`;
+      subtitle = isMe ? 'Call was declined' : 'You declined this call';
+      icon = <PhoneOff size={20} color="#ef4444" />;
+    } else if (isCompleted) {
+      title = `${isVideo ? 'Video' : 'Voice'} call`;
+      subtitle = duration > 0 ? formatDur(duration) : 'Completed';
+      icon = isMe ? <PhoneOutgoing size={20} color="#00a884" /> : <PhoneIncoming size={20} color="#00a884" />;
+    } else {
+      title = `${isVideo ? 'Video' : 'Voice'} call`;
+      subtitle = rawStatus.toLowerCase();
+      icon = isVideo ? <Video size={20} color="#00a884" /> : <Phone size={20} color="#00a884" />;
+    }
+
+    const handleCallBack = () => {
+      const peer = isMe
+        ? (message.receiverUsername || message.receiver?.username)
+        : (message.senderUsername || message.sender?.username || message.sender);
+      if (!peer) return;
+      window.dispatchEvent(new CustomEvent('start_call', {
+        detail: {
+          receiver: peer,
+          callType: isVideo ? 'VIDEO' : 'AUDIO',
+        }
+      }));
+    };
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: '10px', width: '100%' }}>
+        <div
+          onClick={handleCallBack}
+          style={{
+            maxWidth: '320px',
+            minWidth: '220px',
+            padding: '12px 14px',
+            borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+            backgroundColor: isMe ? '#005c4b' : '#202c33',
+            color: '#e9edef',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            border: isMissed && !isMe ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(255, 255, 255, 0.05)',
+            transition: 'transform 0.1s ease',
+          }}
+          title="Click to call back"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              backgroundColor: isMissed && !isMe ? 'rgba(239, 68, 68, 0.18)' : 'rgba(0, 168, 132, 0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              {icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: isMissed && !isMe ? '#ef4444' : '#e9edef', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {title}
+              </div>
+              <div style={{ fontSize: '12px', color: '#8696a0', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {subtitle}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', marginTop: '6px', fontSize: '11px', color: '#8696a0' }}>
+            <span>{time}</span>
+            {renderStatus()}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Sticker: no bubble background, transparent
   const noBackground = isSticker;

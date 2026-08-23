@@ -77,12 +77,24 @@ public class CallController {
         Map<String, Object> receiverEntry = buildCallHistoryEntry(saved, receiver);
 
         // 5. Broadcast chat message to both
-        messagingTemplate.convertAndSend("/topic/messages/" + caller.getUsername(),   dto);
+        messagingTemplate.convertAndSend("/topic/messages/" + caller.getUsername(), dto);
         messagingTemplate.convertAndSend("/topic/messages/" + receiver.getUsername(), dto);
+        if (!caller.getUsername().equals(caller.getUsername().toLowerCase())) {
+            messagingTemplate.convertAndSend("/topic/messages/" + caller.getUsername().toLowerCase(), dto);
+        }
+        if (!receiver.getUsername().equals(receiver.getUsername().toLowerCase())) {
+            messagingTemplate.convertAndSend("/topic/messages/" + receiver.getUsername().toLowerCase(), dto);
+        }
 
         // 6. Broadcast call history update to both
-        messagingTemplate.convertAndSend("/topic/callhistory/" + caller.getUsername(),   callerEntry);
+        messagingTemplate.convertAndSend("/topic/callhistory/" + caller.getUsername(), callerEntry);
         messagingTemplate.convertAndSend("/topic/callhistory/" + receiver.getUsername(), receiverEntry);
+        if (!caller.getUsername().equals(caller.getUsername().toLowerCase())) {
+            messagingTemplate.convertAndSend("/topic/callhistory/" + caller.getUsername().toLowerCase(), callerEntry);
+        }
+        if (!receiver.getUsername().equals(receiver.getUsername().toLowerCase())) {
+            messagingTemplate.convertAndSend("/topic/callhistory/" + receiver.getUsername().toLowerCase(), receiverEntry);
+        }
 
         return ResponseEntity.ok(Map.of("id", saved.getId(), "messageId", savedMsg.getId()));
     }

@@ -1,8 +1,9 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider, useUI } from './context/UIContext';
 import { ChatProvider } from './context/ChatContext';
-import { CallProvider } from './context/CallContext';
+import { CallProvider, useCall } from './context/CallContext';
+import { BellRing } from 'lucide-react';
 
 import AuthContainer from './components/Auth/AuthContainer';
 import Sidebar from './components/Sidebar/Sidebar';
@@ -107,9 +108,38 @@ const MainContent = () => {
     );
   }
 
+  const { offlineNotice } = useCall();
+
   // Main Dashboard layout
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#0b141a' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#0b141a', position: 'relative' }}>
+      {/* Offline Call Notification Toast Banner */}
+      {offlineNotice && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#1f2c34',
+            border: '1px solid #00a884',
+            color: '#e9edef',
+            padding: '12px 24px',
+            borderRadius: '24px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+            zIndex: 9999999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '14px',
+            fontWeight: 500,
+          }}
+        >
+          <BellRing size={20} color="#00a884" />
+          <span>{offlineNotice}</span>
+        </div>
+      )}
+
       <Sidebar />
       <ChatWindow />
 

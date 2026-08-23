@@ -112,7 +112,13 @@ public class MessageController {
     // WebSocket Handler: Handles WebRTC call signaling
     @MessageMapping("/call/signal")
     public void processCallSignal(@Payload com.whatsappclone.dto.CallSignalDto signal) {
-        messagingTemplate.convertAndSend("/topic/calls/" + signal.getReceiverUsername(), signal);
+        if (signal != null && signal.getReceiverUsername() != null) {
+            String target = signal.getReceiverUsername();
+            messagingTemplate.convertAndSend("/topic/calls/" + target, signal);
+            if (!target.equals(target.toLowerCase())) {
+                messagingTemplate.convertAndSend("/topic/calls/" + target.toLowerCase(), signal);
+            }
+        }
     }
 
     // WebSocket Handler: Handles real-time typing / recording status

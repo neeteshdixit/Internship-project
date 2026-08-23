@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Phone, Video, Search, Star, Clock, EyeOff, AlertOctagon, Image, Download, Sliders, Sparkles } from 'lucide-react';
 import { useUI } from '../../context/UIContext';
 import { useChat } from '../../context/ChatContext';
@@ -14,9 +14,15 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
   const isVanish = !!activeChat?.vanishMode;
 
   const handleCall = (type) => {
+    if (activeChat?.isGroup) {
+      alert('Group calls are not supported yet.');
+      return;
+    }
+    const receiver = activeChat?.username || activeChat?.name;
+    if (!receiver) return;
     window.dispatchEvent(new CustomEvent('start_call', {
       detail: {
-        receiver: activeChat?.username,
+        receiver,
         callType: type,
       }
     }));

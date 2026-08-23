@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useAuth } from './AuthContext';
@@ -210,6 +210,52 @@ export const ChatProvider = ({ children }) => {
     }
   }, [getChatKeyFromMsg, getChatKey, currentUser, autoMarkRead]);
 
+  const callSignalListenersRef = useRef(new Set());
+
+  const registerCallSignalListener = useCallback((listener) => {
+    callSignalListenersRef.current.add(listener);
+    return () => {
+      callSignalListenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const sendCallSignal = useCallback((signalDto) => {
+    if (stompClientRef.current && stompClientRef.current.connected) {
+      stompClientRef.current.publish({
+        destination: '/app/call/signal',
+        body: JSON.stringify(signalDto),
+      });
+      return true;
+    }
+    return false;
+  }, []);
+
+  // Fetch initial call history
+  const fetchCallHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/calls');
+      if (Array.isArray(data)) {
+        setCallHistory(data.map((item) => ({
+          id: item.id,
+          otherUser: item.peerUsername,
+          callType: (item.callType || 'audio').toUpperCase(),
+          direction: item.direction === 'outgoing' ? 'OUTGOING' : 'INCOMING',
+          status: (item.status || 'completed').toUpperCase(),
+          duration: item.durationSeconds || 0,
+          timestamp: item.timestamp,
+        })));
+      }
+    } catch (e) {
+      console.warn('Failed to load call history:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchCallHistory();
+    }
+  }, [currentUser, fetchCallHistory]);
+
   // WebSocket Connection
   useEffect(() => {
     if (!currentUser || !token) return;
@@ -268,6 +314,46 @@ export const ChatProvider = ({ children }) => {
             });
           } catch (e) {}
         });
+
+        // Call signaling subscription
+        const handleCallSignal = (message) => {
+          try {
+            const signal = JSON.parse(message.body);
+            callSignalListenersRef.current.forEach((listener) => {
+              try { listener(signal); } catch (err) { console.error('Call signal listener error:', err); }
+            });
+          } catch (e) {
+            console.error('Failed to parse incoming call signal:', e);
+          }
+        };
+
+        client.subscribe(`/topic/calls/${currentUser.username}`, handleCallSignal);
+        if (currentUser.username.toLowerCase() !== currentUser.username) {
+          client.subscribe(`/topic/calls/${currentUser.username.toLowerCase()}`, handleCallSignal);
+        }
+
+        // Call history real-time updates subscription
+        const handleCallHistoryUpdate = (message) => {
+          try {
+            const entry = JSON.parse(message.body);
+            setCallHistory((prev) => [
+              {
+                id: entry.id,
+                otherUser: entry.peerUsername,
+                callType: (entry.callType || 'audio').toUpperCase(),
+                direction: entry.direction === 'outgoing' ? 'OUTGOING' : 'INCOMING',
+                status: (entry.status || 'completed').toUpperCase(),
+                duration: entry.durationSeconds || 0,
+                timestamp: entry.timestamp,
+              },
+              ...prev.filter((c) => c.id !== entry.id)
+            ]);
+          } catch (e) {}
+        };
+        client.subscribe(`/topic/callhistory/${currentUser.username}`, handleCallHistoryUpdate);
+        if (currentUser.username.toLowerCase() !== currentUser.username) {
+          client.subscribe(`/topic/callhistory/${currentUser.username.toLowerCase()}`, handleCallHistoryUpdate);
+        }
 
         // Register user presence immediately
         client.publish({ destination: '/app/presence/connect', body: currentUser.username });
@@ -632,6 +718,9 @@ export const ChatProvider = ({ children }) => {
         refreshContacts,
         callHistory,
         setCallHistory,
+        sendCallSignal,
+        registerCallSignalListener,
+        fetchCallHistory,
       }}
     >
       {children}
