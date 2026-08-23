@@ -1,0 +1,1295 @@
+# 📘 SETU CONNECT — Comprehensive Project Documentation
+> **Version:** 2.0 (Gemini AI Edition)  
+> **Last Updated:** August 2026  
+> **Purpose:** Prototype Design Reference + Technical Blueprint  
+> **Status:** Production (Deployed on Vercel + Render)
+
+---
+
+## 📑 Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [Tech Stack](#2-tech-stack)
+3. [Brand Design System](#3-brand-design-system)
+4. [Deployment Architecture](#4-deployment-architecture)
+5. [Complete File Directory Map](#5-complete-file-directory-map)
+6. [Backend — API Endpoints (Input/Output)](#6-backend--api-endpoints-inputoutput)
+7. [WebSocket Real-Time Flows](#7-websocket-real-time-flows)
+8. [AI System Architecture](#8-ai-system-architecture)
+9. [Frontend — Component Map](#9-frontend--component-map)
+10. [Context State Management](#10-context-state-management)
+11. [Features — How Each One Works](#11-features--how-each-one-works)
+12. [Request Flow Diagrams](#12-request-flow-diagrams)
+13. [Database Models](#13-database-models)
+14. [Prototype Design Steps](#14-prototype-design-steps)
+
+---
+
+## 1. Project Overview
+
+**Setu Connect** ek WhatsApp-jaise real-time secure chat application hai jo enterprise teams ke liye bani hai. Yeh app regular messaging ke saath AI-powered features deti hai jaise chat summarization, smart replies, grammar correction, message translation, aur bahut kuch.
+
+### 1.1 App Name & Identity
+- **Product Name:** Setu Connect
+- **Internal Code Name:** `whatsapp-clone`
+- **Project Type:** Full-Stack Web Application
+- **Category:** Enterprise Real-Time Messaging + AI
+
+### 1.2 Core Problem It Solves
+| Problem | Solution |
+|---|---|
+| Corporate chats leak to external AI APIs (OpenAI, etc.) | Local/Gemini AI provider with privacy controls |
+| No audit trail for calls & messages | Full call history + analytics dashboard |
+| High cloud LLM API costs | Multi-provider AI (Device → Ollama → Gemini fallback) |
+| No end-to-end encryption in team apps | AES-256 client-side message encryption |
+
+### 1.3 Live URLs
+- **Frontend (Vercel):** `https://internship-project-xi.vercel.app`
+- **Backend (Render):** `https://internship-project-mywr.onrender.com`
+- **Local Dev Frontend:** `http://localhost:5173`
+- **Local Dev Backend:** `http://localhost:8081`
+
+---
+
+## 2. Tech Stack
+
+### 2.1 Backend
+| Technology | Version | Purpose |
+|---|---|---|
+| Java | 17 | Core language |
+| Spring Boot | 3.3.0 | Application framework |
+| Spring Security | 3.3.0 | Authentication & authorization |
+| Spring WebSocket (STOMP) | 3.3.0 | Real-time messaging |
+| Spring Data JPA (Hibernate) | 3.3.0 | Database ORM |
+| PostgreSQL | Latest | Primary database |
+| JWT (jjwt) | 0.11.5 | Token-based authentication |
+| Lombok | Latest | Boilerplate code reduction |
+| Spring AI (Ollama starter) | 1.0.0-M1 | AI model integration (fallback only) |
+| Maven | 3.x | Build tool |
+
+### 2.2 Frontend
+| Technology | Version | Purpose |
+|---|---|---|
+| React | 19.2.6 | UI framework |
+| Vite | 8.0.12 | Build tool + Dev server |
+| @stomp/stompjs | 7.3.0 | WebSocket STOMP client |
+| sockjs-client | 1.6.1 | SockJS WebSocket transport |
+| lucide-react | 1.18.0 | Icon library |
+| @tanstack/react-query | 5.101.4 | Server state management |
+| Vanilla CSS | — | Styling (NO Tailwind) |
+
+### 2.3 AI Providers (Priority Order)
+```
+1st → Device AI (Browser/OS built-in) — LOCAL, No data leaves device
+2nd → Ollama (Local server) — LOCAL, requires Ollama running
+3rd → Gemini 1.5 Flash (Google Cloud) — CLOUD, requires API key
+```
+
+> **⚠️ Important Change (v2.0):** Pehle Ollama primary provider tha aur required tha. Ab yeh optional hai.
+> System **AUTO mode** mein chalega. Agar koi local provider available nahi hai, toh **Gemini API** use hogi (cloud mode).
+> App Ollama ke bina bhi fully functional hai.
+
+---
+
+## 3. Brand Design System
+
+### 3.1 Color Palette — Dark Theme (Default)
+
+| Variable | Hex Value | Usage |
+|---|---|---|
+| `--primary` | `#00a884` | Primary buttons, links, highlights, active states |
+| `--primary-hover` | `#008f72` | Button hover state |
+| `--primary-dark` | `#007a62` | Deep accent |
+| `--primary-glow` | `rgba(0,168,132,0.25)` | Glow effects, shadows |
+| `--bg-darker` | `#0d1117` | Main app background |
+| `--bg-dark` | `#161b22` | Sidebar, card backgrounds |
+| `--bg-light` | `#21262d` | Input fields, secondary surfaces |
+| `--border-color` | `#30363d` | All borders, dividers |
+| `--text-main` | `#e6edf3` | Primary text |
+| `--text-muted` | `#8b949e` | Secondary/metadata text |
+| `--text-light` | `#ffffff` | White text on primary bg |
+| `--text-inv` | `#111b21` | Text on light backgrounds |
+| `--chat-sender` | `#005c4b` | Sent message bubble |
+| `--chat-receiver` | `#202c33` | Received message bubble |
+| `--chat-input-bg` | `#2a3942` | Message input area background |
+| `--danger` | `#f85149` | Error states, delete actions |
+| `--danger-hover` | `#da3633` | Delete button hover |
+| `--hover-bg` | `rgba(255,255,255,0.05)` | List item hover |
+| `--card-bg` | `#161b22` | Card background |
+| `--shadow-lg` | `0 10px 30px rgba(0,0,0,0.5)` | Drop shadow |
+
+### 3.2 Color Palette — Light Theme
+
+| Variable | Hex Value | Usage |
+|---|---|---|
+| `--primary` | `#008069` | Primary color (darker shade) |
+| `--bg-darker` | `#f0f2f5` | Main background |
+| `--bg-dark` | `#ffffff` | Card/sidebar bg |
+| `--border-color` | `#e3e7eb` | Borders |
+| `--text-main` | `#111b21` | Primary text |
+| `--text-muted` | `#667781` | Secondary text |
+| `--chat-sender` | `#d9fdd3` | Sent bubble (WhatsApp green) |
+| `--chat-receiver` | `#ffffff` | Received bubble |
+| `--chat-input-bg` | `#f0f2f5` | Input area |
+| `--shadow-lg` | `0 10px 30px rgba(0,0,0,0.12)` | Light shadow |
+
+**Theme switch:** Add/remove CSS class `.light-mode` on `:root` element.
+
+### 3.3 Typography
+- **Primary Font:** `Inter` (from Google Fonts)
+- **Fallbacks:** `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+- **CSS Variable:** `--font-sans`
+- **Weight:** 400 (regular), 500 (medium), 600 (semibold), 700 (bold)
+
+### 3.4 Animations & Effects
+| Effect | CSS Class / Keyframe | Duration |
+|---|---|---|
+| Fade In | `.animate-fade-in` / `fadeIn` | 0.35s |
+| Scale Up | `.animate-scale-up` / `scaleUp` | 0.35s |
+| Slide In Left | `slideInLeft` | 0.35s |
+| Spin | `spin` | continuous |
+| Glassmorphism | `.glass` | `backdrop-filter: blur(12px)` |
+| Button hover grow | `.btn-hover-grow` | `translateY(-1px)` |
+
+### 3.5 Spacing & Timing
+- **Transition Fast:** `0.2s cubic-bezier(0.4, 0, 0.2, 1)`
+- **Transition Medium:** `0.35s cubic-bezier(0.4, 0, 0.2, 1)`
+- **Scrollbar:** 5px width, transparent track, `#30363d` thumb
+- **Border Radius Standard:** 8px (inputs), 12-16px (cards), 18px/4px (message bubbles)
+
+---
+
+## 4. Deployment Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│           USER BROWSER (React App)           │
+│         Hosted on: Vercel                    │
+│   URL: internship-project-xi.vercel.app      │
+└──────────────────┬──────────────────────────┘
+                   │ HTTPS (REST API)
+                   │ WSS (WebSocket/STOMP)
+                   ▼
+┌─────────────────────────────────────────────┐
+│        Spring Boot Backend (Java 17)         │
+│         Hosted on: Render                    │
+│  URL: internship-project-mywr.onrender.com   │
+│                                              │
+│  ┌──────────────┐   ┌────────────────────┐  │
+│  │  REST APIs   │   │  WebSocket (STOMP) │  │
+│  │  Port: 8081  │   │  Endpoint: /ws     │  │
+│  └──────────────┘   └────────────────────┘  │
+└──────────┬──────────────────────┬────────────┘
+           │                      │
+           ▼                      ▼
+┌──────────────────┐    ┌─────────────────────┐
+│   PostgreSQL DB  │    │    AI Providers      │
+│  (Neon/Render)   │    │  1. Device AI (local)│
+│                  │    │  2. Ollama (optional) │
+│                  │    │  3. Gemini Flash API  │
+└──────────────────┘    └─────────────────────┘
+```
+
+---
+
+## 5. Complete File Directory Map
+
+### 5.1 Root Structure
+```
+realtime-chat-app/
+├── backend/                      → Java Spring Boot API server
+├── frontend/                     → React + Vite SPA
+├── business_requirements.md      → Business Requirements Document (BRD)
+├── functional_specifications.md  → Functional Specifications
+└── prd.md                        → Product Requirements Document
+```
+
+### 5.2 Backend File Map (with Purpose)
+```
+backend/
+├── Dockerfile                    → Docker image for Render deployment
+├── pom.xml                       → Maven deps: Spring Boot, JPA, Security, WebSocket, JWT, Lombok, Ollama AI
+└── src/main/
+    ├── resources/
+    │   └── application.properties   → DB URL, JWT secret, server port, Ollama URL, AI tuning
+    └── java/com/whatsappclone/
+        ├── WhatsappCloneBackendApplication.java  → Main class: @SpringBootApplication entry point
+        │
+        ├── config/
+        │   ├── WebSocketConfig.java     → STOMP broker, /ws endpoint, allowed origins (Vercel + localhost)
+        │   └── DataInitializer.java     → Optional seed data on startup
+        │
+        ├── controller/                  → HTTP & WebSocket request handlers
+        │   ├── AuthController.java      → POST /api/auth/register, POST /api/auth/login
+        │   ├── MessageController.java   → WS /app/chat (send), GET/DELETE messages, reactions, star, pin, panic-wipe
+        │   ├── UserController.java      → Search users, get/update profile, privacy settings, upload pic
+        │   ├── ContactController.java   → CRUD /api/contacts
+        │   ├── CallController.java      → GET/POST /api/calls (call history + broadcast)
+        │   ├── StatusController.java    → GET/POST /api/statuses (24h stories)
+        │   ├── ChatGroupController.java → Create/get group chats
+        │   ├── AiController.java        → All 18 AI endpoints at /api/ai/*
+        │   ├── AnalyticsController.java → Usage analytics data
+        │   ├── MediaController.java     → File upload /api/media/upload
+        │   ├── ScheduledMessageController.java → Future message scheduling
+        │   └── ConversationVanishModeController.java → Vanish mode per chat
+        │
+        ├── service/                     → Business logic
+        │   ├── AuthService.java         → Register (BCrypt hash), login, JWT generation
+        │   ├── MessageService.java      → Save, fetch, delete, star, pin, wipe messages
+        │   ├── PresenceService.java     → Online status tracking (in-memory Map)
+        │   ├── PrivacyService.java      → canSeeLast seen/photo/about/online visibility checks
+        │   ├── ChatGroupService.java    → Group creation, member management
+        │   ├── PromptManager.java       → 16 AI prompt templates (summarize, translate, mood, etc.)
+        │   ├── AiService.java           → AI orchestration: calls PromptManager + AIProvider + returns AiReportResponse
+        │   ├── AiGateway.java           → Low-level Ollama REST API caller (Spring AI)
+        │   ├── ConversationVanishModeService.java → Auto-delete on read
+        │   ├── MessagePurgeScheduler.java → @Scheduled: removes expired/vanish messages
+        │   └── ScheduledMessageService.java → Future message trigger
+        │   └── ai/
+        │       ├── AIProvider.java      → Interface: getName(), isLocal(), isAvailable(), generate(prompt)
+        │       ├── AiProviderManager.java → Selection logic: AUTO/DEVICE/LOCAL/CLOUD mode
+        │       ├── DeviceAiProvider.java → Browser AI placeholder (not yet active)
+        │       ├── OllamaAiProvider.java → Calls AiGateway → Ollama local server (optional)
+        │       └── GeminiAiProvider.java → Calls Google Gemini 1.5 Flash REST API directly
+        │
+        ├── model/                       → JPA Entities (database tables)
+        │   ├── User.java                → id, username, email, phoneNumber, password (BCrypt), profilePicUrl, about, lastSeen
+        │   ├── Message.java             → Full message: text, media, call fields, encryption, reactions, selfDestruct, location
+        │   ├── Contact.java             → owner→User, contactUser→User, customName
+        │   ├── ChatGroup.java           → id, name, Set<User> members
+        │   ├── CallRecord.java          → caller, receiver, callType, status, duration, timestamps
+        │   ├── Status.java              → user, mediaUrl, caption, type, textBackground, expiresAt
+        │   ├── PrivacySettings.java     → Per-user visibility settings (last seen, photo, about, readReceipts)
+        │   ├── AiSettings.java          → Global AI config (singleton id=1): preferredProvider, cloud permissions
+        │   └── ScheduledMessage.java    → Future message with sendAt timestamp
+        │
+        ├── dto/                         → Data Transfer Objects (request/response shapes)
+        │   ├── MessageDto.java          → Input: senderUsername, receiverUsername, content, groupId, iv, selfDestructSeconds...
+        │   ├── MessageResponseDto.java  → Output: all message fields + call fields + group fields
+        │   ├── AiRequestDto.java        → Input: { text, param }
+        │   ├── AiReportResponse.java    → Output: { responseText, provider, processingMode, sentOutsideDevice, time, status }
+        │   ├── TypingSignalDto.java     → WS: { senderUsername, receiverUsername, isTyping }
+        │   ├── CallSignalDto.java       → WS WebRTC: { type, callerUsername, receiverUsername, sdp/candidate }
+        │   ├── ContactDTO.java          → Contact response
+        │   └── PrivacySettingsDto.java  → Privacy settings request/response
+        │
+        ├── repo/                        → Spring Data JPA Repositories
+        │   ├── UserRepository.java      → findByUsername, findByPhoneNumber, existsByUsername, findAllByUsernameIgnoreCase
+        │   ├── MessageRepository.java   → findLastMessage(userId1, userId2), findMessagesInvolvingUser
+        │   ├── ContactRepository.java   → findByOwner, findByOwnerAndContactUser, deleteAllByOwner
+        │   ├── CallRecordRepository.java → findByCallerOrReceiverOrderByTimestampDesc
+        │   ├── StatusRepository.java    → findByUserInAndExpiresAtAfterOrderByCreatedAtAsc
+        │   ├── AiSettingsRepository.java → findById(1L) — singleton AI config
+        │   ├── PrivacySettingsRepository.java → findByUser
+        │   └── ScheduledMessageRepository.java
+        │
+        └── security/
+            ├── JwtFilter.java           → OncePerRequestFilter: extracts & validates Bearer token
+            ├── JwtUtil.java             → generateToken(username), validateToken, extractUsername
+            ├── SecurityConfig.java      → CORS, public endpoints whitelist, filter chain order
+            └── CustomUserDetailsService.java → loadUserByUsername for Spring Security
+```
+
+### 5.3 Frontend File Map (with Purpose)
+```
+frontend/
+├── index.html              → Root HTML, #root div, Inter font link from Google Fonts
+├── vite.config.js          → Vite + React plugin config
+├── package.json            → npm dependencies
+├── .env                    → VITE_API_URL environment variable
+└── src/
+    ├── main.jsx            → Entry point: ReactDOM.createRoot → <App/>
+    ├── App.jsx             → Root: auth check → AuthContainer OR main layout with all modals
+    ├── index.css           → ⭐ GLOBAL CSS: CSS variables (brand colors), dark/light themes, animations, resets
+    ├── App.css             → Main layout styles
+    │
+    ├── lib/
+    │   ├── apiFetch.js     → ⭐ Centralized HTTP client: auto JWT header, dev/prod URL switching
+    │   └── queryClient.js  → React Query client setup
+    │
+    ├── crypto/
+    │   └── cryptoEngine.js → AES-256-GCM encryption/decryption (client-side, before sending)
+    │
+    ├── context/
+    │   ├── AuthContext.jsx  → ⭐ Auth state: currentUser, token, isAuthenticated, login(), register(), logout()
+    │   ├── ChatContext.jsx  → ⭐ Chat engine: WebSocket STOMP, messages, contacts, sendMessage(), typing, online users
+    │   ├── CallContext.jsx  → ⭐ WebRTC calls: peer connection, incoming/active call, stream management
+    │   └── UIContext.jsx    → Modal state: { profile: bool, group: bool, AI: bool, ... } open/close
+    │
+    └── components/
+        ├── Auth/
+        │   └── AuthContainer.jsx    → Login + Register form (glassmorphism card design)
+        │
+        ├── Sidebar/
+        │   ├── Sidebar.jsx          → ⭐ Left panel wrapper: renders active panel based on selected tab
+        │   ├── NaivRail.jsx         → Icon rail: Chats | Calls | Status | Analytics | Settings (click switches panel)
+        │   ├── SidebarHeader.jsx    → Top bar: "Setu Connect" logo, new chat (+) button, search
+        │   ├── SidebarSearch.jsx    → Contact search input field
+        │   ├── ChatList.jsx         → Contact list with last message, timestamp, unread count badge
+        │   ├── CallsPanel.jsx       → Call history list (audio/video, incoming/outgoing, duration)
+        │   ├── StatusPanel.jsx      → Contact status/stories list (24h ring indicator)
+        │   ├── AnalyticsPanel.jsx   → Usage stats: messages count, calls, AI usage, charts
+        │   └── SettingsPanel.jsx    → Profile edit, privacy toggles, AI provider selector, theme toggle
+        │
+        ├── ChatWindow/
+        │   └── ChatWindow.jsx       → ⭐ Main chat area: header, messages list, AI panel, input bar
+        │
+        ├── calls/
+        │   ├── IncomingCallOverlay.jsx  → Popup over everything: contact name, Accept (green)/Reject (red)
+        │   └── ActiveCallWindow.jsx     → Live call: video/audio stream, mute/unmute, end call button, timer
+        │
+        ├── chat/                    → Reusable chat sub-components
+        ├── common/                  → Shared utility components (e.g., Avatar, Badge)
+        │
+        └── modals/                  → 16 Overlay Modals
+            ├── ProfileModal.jsx         → View contact profile: avatar, name, phone, about, last seen
+            ├── GroupModal.jsx           → Create group: name input + contact multi-select
+            ├── AIModal.jsx              → AI chat assistant: conversational multi-turn AI
+            ├── ScheduledModal.jsx       → Schedule message: text input + datetime picker
+            ├── StarredModal.jsx         → All starred messages (filterable by contact)
+            ├── VanishModeModal.jsx      → Enable/disable auto-delete for current chat
+            ├── MediaGalleryModal.jsx    → Shared media grid: photos | videos | documents | links
+            ├── ExportChatModal.jsx      → Export chat: date range picker → download as text/HTML
+            ├── ConversationControlModal.jsx → Mute, block, clear chat, report user
+            ├── UniversalSearchModal.jsx → Global full-text search across all chats
+            ├── DeviceSyncModal.jsx      → Multi-device session info
+            ├── MessageRecoveryModal.jsx → Recover soft-deleted messages
+            ├── StorageManagerModal.jsx  → Storage breakdown: media types, sizes, cleanup
+            ├── ChatLockModal.jsx        → Lock chat with PIN (stored locally)
+            ├── ChatTimelineModal.jsx    → Calendar timeline of chat history
+            └── MediaModal.jsx           → Full-screen media viewer (zoom, download)
+```
+
+---
+
+## 6. Backend — API Endpoints (Input/Output)
+
+### 6.1 Authentication APIs
+
+#### POST `/api/auth/register`
+**Input (JSON Body):**
+```json
+{
+  "username": "neetesh",
+  "email": "neetesh@example.com",
+  "phoneNumber": "+919876543210",
+  "password": "MyPass@123"
+}
+```
+**Output:**
+```json
+{ "token": "eyJhbGciOiJIUzI1NiJ9...", "username": "neetesh" }
+```
+
+#### POST `/api/auth/login`
+**Input:** `{ "username": "neetesh", "password": "MyPass@123" }`  
+**Output:** `{ "token": "eyJhbGciOiJIUzI1NiJ9...", "username": "neetesh" }`
+
+---
+
+### 6.2 User APIs (all require `Authorization: Bearer {token}`)
+
+| Endpoint | Method | Input | Output |
+|---|---|---|---|
+| `/api/users/me` | GET | JWT token | Current user object |
+| `/api/users/search?query=...` | GET | phone/username query param | Single user OR 404 |
+| `/api/users` | GET | — | All users list |
+| `/api/users/profile` | PUT | `{username, email, phoneNumber, profilePicUrl}` | Updated user |
+| `/api/users/about` | PUT | `{about: "Hey there!"}` | `{about: "..."}` |
+| `/api/users/privacy` | GET | — | Privacy settings object |
+| `/api/users/privacy` | PUT | Privacy settings object | Updated settings |
+| `/api/users/profile-image` | POST | multipart file (jpg/png, max 5MB) | `{profilePicUrl: "..."}` |
+| `/api/users/{username}/profile` | GET | JWT | Profile with privacy-filtered data |
+| `/api/users/me` | DELETE | JWT | Deletes account + contacts + privacy settings |
+
+**Privacy Settings Object:**
+```json
+{
+  "lastSeenVisibility": "EVERYONE | CONTACTS | NOBODY",
+  "onlineVisibility": "EVERYONE | CONTACTS | NOBODY",
+  "profilePhotoVisibility": "EVERYONE | CONTACTS | NOBODY",
+  "aboutVisibility": "EVERYONE | CONTACTS | NOBODY",
+  "readReceipts": true,
+  "groupPrivacy": "EVERYONE | CONTACTS | NOBODY",
+  "callPrivacy": "EVERYONE | CONTACTS | NOBODY"
+}
+```
+
+---
+
+### 6.3 Message APIs
+
+#### GET `/api/messages/{username1}/{username2}`
+**Output:** Array of MessageResponseDto
+```json
+[{
+  "id": 42,
+  "senderUsername": "alice",
+  "receiverUsername": "bob",
+  "content": "Hello! (encrypted ciphertext)",
+  "timestamp": "2026-08-23T10:30:00",
+  "status": "read",
+  "parentMessageId": null,
+  "parentMessageText": null,
+  "parentMessageSender": null,
+  "isForwarded": false,
+  "isStarred": false,
+  "isPinned": false,
+  "reactions": "alice:👍,bob:❤️",
+  "isMedia": false,
+  "mediaUrl": null,
+  "mediaType": null,
+  "fileName": null,
+  "fileSize": null,
+  "messageType": "TEXT",
+  "callType": null,
+  "callStatus": null,
+  "callDuration": null,
+  "groupId": null,
+  "groupName": null,
+  "iv": "encryption-IV-base64-string",
+  "selfDestructSeconds": null,
+  "expiresAt": null,
+  "readAt": null,
+  "isPriority": false,
+  "latitude": null,
+  "longitude": null
+}]
+```
+
+| Endpoint | Method | Input | Output |
+|---|---|---|---|
+| `/api/messages/read/{senderUsername}` | POST | JWT | Marks all messages read, broadcasts blue tick |
+| `/api/messages/{id}` | DELETE | JWT | Deletes message (within 15 min limit) |
+| `/api/messages/star/{id}` | POST | JWT | Toggles isStarred |
+| `/api/messages/pin/{id}` | POST | JWT | Toggles isPinned |
+| `/api/messages/react/{id}` | POST | `{reaction: "👍"}` (empty removes) | `{id, reactions: "alice:👍"}` |
+| `/api/messages/partners/{username}` | GET | JWT | Chat partners with last message preview |
+| `/api/messages/panic-wipe` | DELETE | JWT | Wipes ALL user messages |
+| `/api/users/online` | GET | JWT | Set of online usernames |
+
+---
+
+### 6.4 Contact APIs
+
+| Endpoint | Method | Input | Output |
+|---|---|---|---|
+| `/api/contacts` | GET | JWT | User's contacts array |
+| `/api/contacts` | POST | `{phoneNumber, customName}` | Created contact |
+| `/api/contacts/{id}` | DELETE | JWT | Deletes contact |
+
+---
+
+### 6.5 Call APIs
+
+| Endpoint | Method | Input | Output |
+|---|---|---|---|
+| `/api/calls` | GET | JWT | Call history with direction (incoming/outgoing) |
+| `/api/calls` | POST | `{receiverUsername, callType, status, durationSeconds}` | `{id, messageId}` |
+
+**Call Record Output:**
+```json
+{
+  "id": 1,
+  "callerUsername": "alice",
+  "receiverUsername": "bob",
+  "peerUsername": "bob",
+  "peerAvatar": "http://...",
+  "callType": "audio",
+  "status": "COMPLETED",
+  "durationSeconds": 145,
+  "direction": "outgoing",
+  "timestamp": "2026-08-23 10:30:00",
+  "startedAt": "2026-08-23 10:28:00",
+  "endedAt": "2026-08-23 10:30:25"
+}
+```
+
+**Call Statuses:** `COMPLETED | MISSED | REJECTED | BUSY | CANCELLED | OFFLINE | NO_ANSWER | FAILED`
+
+---
+
+### 6.6 Status APIs
+
+| Endpoint | Method | Input | Output |
+|---|---|---|---|
+| `/api/statuses` | POST | `{type, caption, mediaUrl, textBackground}` | `{id, message}` |
+| `/api/statuses` | GET | JWT | Grouped active statuses (within 24h) of contacts |
+
+---
+
+### 6.7 AI APIs — All at `/api/ai/*`
+
+**Common Input DTO:**
+```json
+{ "text": "conversation transcript or message here", "param": "optional (language/tone/level)" }
+```
+
+**Common Output DTO (AiReportResponse):**
+```json
+{
+  "responseText": "AI generated response here...",
+  "provider": "Gemini | Ollama | Device | None",
+  "processingMode": "Cloud | Local | N/A",
+  "sentOutsideDevice": true,
+  "temporaryBufferReleased": true,
+  "processingTimeSeconds": 2.3,
+  "status": "Completed | Failed | Unavailable"
+}
+```
+
+| Endpoint | `text` field | `param` field | AI Function |
+|---|---|---|---|
+| `POST /api/ai/summarize` | Chat transcript | — | Bullet summary + key points + decisions |
+| `POST /api/ai/smart-reply` | Chat transcript | — | 3 context-aware reply suggestions (one per line) |
+| `POST /api/ai/rewrite` | Single message | `formal / casual / professional` | Rewrites message in given tone |
+| `POST /api/ai/grammar` | Single message | — | Fixes spelling & grammar, returns corrected text only |
+| `POST /api/ai/translate` | Single message | Target language e.g. `Hindi` | Translated text only |
+| `POST /api/ai/tasks` | Chat transcript | — | Extracts action items with owner & priority |
+| `POST /api/ai/meetings` | Chat transcript | — | Meeting detection (structured JSON) |
+| `POST /api/ai/reminders` | Chat transcript | — | Reminder extraction (structured JSON) |
+| `POST /api/ai/title` | Chat transcript | — | 4-word chat topic title |
+| `POST /api/ai/mood` | Chat transcript | — | Mood JSON: `{mood, confidenceScore}` |
+| `POST /api/ai/notes` | Messages/transcript | — | Structured personal notes with headings |
+| `POST /api/ai/explain` | Technical/long text | `beginner / intermediate / expert` | Simple explanation |
+| `POST /api/ai/email` | Chat context | — | Professional email (Subject + Body + Closing) |
+| `POST /api/ai/improve` | Single message | — | Improved clarity & readability |
+| `POST /api/ai/daily-summary` | Day's chat logs | — | Daily activity summary |
+| `POST /api/ai/chat` | User's message | Previous conversation history | Conversational AI response |
+| `GET /api/ai/status` | — | — | Current provider status info |
+| `GET /api/ai/preflight` | — | — | Returns: `{providerName, isCloud, requiresPermission}` |
+| `GET /api/ai/settings` | — | — | Get AiSettings object |
+| `POST /api/ai/settings` | AiSettings JSON body | — | Save AI provider preferences |
+| `GET /api/ai/summarize/{u1}/{u2}` | Two usernames in URL | — | Auto-fetches & summarizes their conversation |
+
+---
+
+## 7. WebSocket Real-Time Flows
+
+### 7.1 Connection Setup
+```
+URL: ws://backend-host/ws (SockJS fallback)
+Protocol: STOMP over SockJS
+
+On connect, frontend subscribes to:
+  /topic/messages/{myUsername}      → incoming messages
+  /topic/typing/{myUsername}        → typing indicators
+  /topic/calls/{myUsername}         → WebRTC call signals
+  /topic/callhistory/{myUsername}   → real-time call log updates
+  /topic/messages/read/{myUsername} → blue tick read receipts
+```
+
+### 7.2 Send a Message (WebSocket)
+```
+Frontend PUBLISH → /app/chat
+Payload:
+{
+  senderUsername, receiverUsername, content (encrypted),
+  groupId (null for direct), messageType, isMedia, mediaUrl,
+  mediaType, iv (AES IV), selfDestructSeconds, isPriority,
+  parentMessageId, isForwarded
+}
+    ↓
+Backend MessageController.processMessage()
+    ↓ MessageService.saveMessage() → PostgreSQL
+    ↓
+If GROUP:
+  BROADCAST → /topic/messages/{each member's username}
+If DIRECT:
+  BROADCAST → /topic/messages/{receiverUsername}
+  BROADCAST → /topic/messages/{senderUsername}   ← UI confirmation
+```
+
+### 7.3 Typing Indicator (WebSocket)
+```
+Frontend PUBLISH → /app/chat/typing
+{ senderUsername, receiverUsername, isTyping: true/false }
+    ↓
+BROADCAST → /topic/typing/{receiverUsername}
+```
+
+### 7.4 WebRTC Call Signaling (WebSocket)
+```
+Caller PUBLISH → /app/call/signal
+{ type: "call-request|offer|answer|candidate|call-end",
+  callerUsername, receiverUsername, sdp, candidate }
+    ↓
+BROADCAST → /topic/calls/{receiverUsername}
+```
+
+### 7.5 Read Receipt (REST → WebSocket)
+```
+Frontend POST → /api/messages/read/{senderUsername}
+    ↓ DB: updates status = "read"
+    ↓
+BROADCAST → /topic/messages/read/{senderUsername}
+  { senderUsername, receiverUsername }
+  (sender's UI changes grey double ticks → blue double ticks)
+```
+
+### 7.6 Presence (Online Status)
+```
+On WS connect:
+Frontend PUBLISH → /app/presence/connect
+Body: myUsername
+
+Backend PresenceService.userOnline(username, sessionId)
+(stored in ConcurrentHashMap — session-based)
+
+On disconnect: PresenceService.userOffline(sessionId)
+
+Poll: GET /api/users/online → returns Set<String> of online usernames
+```
+
+---
+
+## 8. AI System Architecture
+
+### 8.1 Provider Selection Flow (AiProviderManager)
+```
+Request arrives at AiController
+    ↓
+AiService.executeWithReport(promptText)
+    ↓
+AiProviderManager.selectProvider()
+    ↓ reads AiSettings from DB (singleton record id=1)
+
+┌─────────────────────────────────────────────────┐
+│ preferredProvider = "DEVICE" → DeviceAiProvider  │
+│ preferredProvider = "LOCAL"  → OllamaAiProvider  │
+│ preferredProvider = "CLOUD"  → GeminiAiProvider  │
+│                               (if not disabled)  │
+│                                                  │
+│ preferredProvider = "AUTO" (DEFAULT):             │
+│   Step 1: DeviceAiProvider.isAvailable()? ─Yes─▶ Use Device │
+│                    │No                           │
+│   Step 2: OllamaAiProvider.isAvailable()? ─Yes─▶ Use Ollama │
+│           (pings http://localhost:11434)          │
+│                    │No                           │
+│   Step 3: GeminiAiProvider.isAvailable()? ─Yes─▶ Use Gemini │
+│           (checks if gemini.api.key is set)       │
+│                    │No                           │
+│   All failed → return null → "AI Unavailable"    │
+└─────────────────────────────────────────────────┘
+```
+
+### 8.2 Current State (v2.0 — Post Ollama Removal as Requirement)
+| Provider | Status | Requirement |
+|---|---|---|
+| Device AI | Code exists, not active | No external requirement |
+| Ollama | Optional, AUTO mode tries it | Needs Ollama running locally on port 11434 |
+| Gemini Flash 1.5 | **Primary cloud fallback** | `gemini.api.key` env var in backend |
+| None | If all fail | App still works, AI shows "unavailable" |
+
+### 8.3 Privacy Transparency Report
+Every single AI response includes:
+```json
+{
+  "provider": "Gemini",             // Who processed it
+  "processingMode": "Cloud",        // Local or Cloud
+  "sentOutsideDevice": true,        // Was data sent to external server?
+  "temporaryBufferReleased": true,  // Data cleared after processing
+  "processingTimeSeconds": 2.3,     // Response time
+  "status": "Completed"             // Success/Failed/Unavailable
+}
+```
+
+### 8.4 User-Configurable AI Settings
+```json
+{
+  "preferredProvider": "AUTO",           // AUTO = smart fallback
+  "askPermissionEveryTime": true,        // Ask before using cloud
+  "alwaysAllowCloud": false,             // Never auto-allow cloud
+  "disableCloudAi": false,              // Emergency: block all cloud
+  "preferLocalProcessing": true,         // Prefer local when possible
+  "neverAutomaticallySendToCloud": true, // No silent cloud fallback
+  "showPrivacyNoticeBeforeCloud": true   // Show warning modal
+}
+```
+
+### 8.5 Prompt Manager — All 16 Prompt Templates
+Located in `PromptManager.java`, each method returns a carefully crafted prompt string:
+
+| Method | Key Instruction in Prompt |
+|---|---|
+| `getSummarizePrompt` | "Bullet Summary + Key Points + Important Decisions" |
+| `getSmartReplyPrompt` | "Exactly 3 replies, one per line, no numbering" |
+| `getRewritePrompt` | "Rewrite to sound {MODE}, keep original meaning" |
+| `getGrammarPrompt` | "Return ONLY corrected message, no explanations" |
+| `getTranslatePrompt` | "Return ONLY translated text, no intro remarks" |
+| `getActionItemsPrompt` | "Extract tasks with owner, priority, deadline" |
+| `getMeetingPrompt` | "Return raw JSON only: {isMeeting, title, date, time, location}" |
+| `getReminderPrompt` | "Return raw JSON only: {isReminder, title, time, description}" |
+| `getChatTitlePrompt` | "Return ONLY title, maximum 4 words" |
+| `getMoodPrompt` | "Return raw JSON: {mood, confidenceScore}" |
+| `getNotesPrompt` | "Clean structured notes with headings and bullets" |
+| `getExplainPrompt` | "Explain for {LEVEL} level person" |
+| `getEmailPrompt` | "Professional email: Subject + Greeting + Body + Closing" |
+| `getImprovePrompt` | "Improve readability, return ONLY improved version" |
+| `getDailySummaryPrompt` | "Summarize messages, calls, meetings, tasks, overall summary" |
+| (chat method in AiService) | "You are helpful AI assistant. Answer conversationally." |
+
+---
+
+## 9. Frontend — Component Map
+
+### 9.1 Component Hierarchy
+```
+<App>
+  Providers: AuthProvider → UIProvider → ChatProvider → CallProvider
+  │
+  ├── Loading state → "Loading Setu Connect..." spinner (#00a884)
+  │
+  ├── Not authenticated → <AuthContainer/>
+  │     Login/Register form (glassmorphism, dark background)
+  │
+  └── Authenticated → <MainContent>
+        │
+        ├── Offline Call Toast (fixed top center, green border)
+        │
+        ├── <Sidebar/>                      (left panel, 360px)
+        │   ├── <NaivRail/>                 (60px icon strip)
+        │   ├── <SidebarHeader/>            (logo + new chat button)
+        │   ├── <SidebarSearch/>            (search input)
+        │   └── [Active Panel]
+        │       ├── <ChatList/>             (tab: chats)
+        │       ├── <CallsPanel/>           (tab: calls)
+        │       ├── <StatusPanel/>          (tab: status)
+        │       ├── <AnalyticsPanel/>       (tab: analytics)
+        │       └── <SettingsPanel/>        (tab: settings)
+        │
+        ├── <ChatWindow/>                   (main area, flex-grow)
+        │   ├── Chat Header                 (contact name, status, call icons)
+        │   ├── Messages Area               (scrollable bubbles)
+        │   ├── AI Features Panel           (inline, expandable)
+        │   └── Input Bar                   (text, emoji, attach, send)
+        │
+        ├── <IncomingCallOverlay/>          (fixed overlay, z:999999)
+        ├── <ActiveCallWindow/>             (fixed fullscreen call UI)
+        │
+        └── [Conditional Modals]
+            ProfileModal, GroupModal, AIModal, ScheduledModal,
+            StarredModal, VanishModeModal, MediaGalleryModal,
+            ExportChatModal, ConversationControlModal,
+            UniversalSearchModal, DeviceSyncModal,
+            MessageRecoveryModal, StorageManagerModal,
+            ChatLockModal, ChatTimelineModal
+```
+
+---
+
+## 10. Context State Management
+
+### 10.1 AuthContext
+| State | Type | Default |
+|---|---|---|
+| `currentUser` | `{id, username, email, phoneNumber, profilePicUrl}` | null |
+| `token` | string | `localStorage.getItem('token')` |
+| `isAuthenticated` | boolean | !!token |
+| `loading` | boolean | true on init |
+
+**Functions:** `login(username, pwd)`, `register({...})`, `logout()`
+
+### 10.2 ChatContext
+| State | Type | Description |
+|---|---|---|
+| `messages` | `{chatKey: Message[]}` | All messages, indexed by chat key, persisted to localStorage |
+| `contacts` | `Contact[]` | User's contact list |
+| `selectedContact` | Contact | Currently open chat |
+| `isConnected` | boolean | WebSocket STOMP status |
+| `typingUsers` | `{username: boolean}` | Currently typing users |
+| `onlineUsers` | `Set<string>` | Online usernames (lowercase) |
+| `unreadCounts` | `{username: number}` | Unread message counts per contact |
+
+**Chat Key Format:**
+- Direct: `direct:alice|bob` (names sorted alphabetically)
+- Group: `group:42`
+
+**Offline Queue:** localStorage key `offlineMessageQueue` — messages queued when WS is down, auto-flushed on reconnect.  
+**Message Persistence:** Auto-saved to `setu_chat_history_v2` in localStorage on every state update.
+
+### 10.3 CallContext
+| State | Description |
+|---|---|
+| `incomingCall` | `{callerUsername, callType}` — shows IncomingCallOverlay |
+| `activeCall` | `{peer, callType}` — shows ActiveCallWindow |
+| `localStream` | MediaStream from user's camera/mic |
+| `remoteStream` | MediaStream from remote peer |
+| `offlineNotice` | Toast message string (shown when calling offline user) |
+
+### 10.4 UIContext
+```js
+modals: {
+  profile: false,        // ProfileModal
+  group: false,          // GroupModal  
+  scheduled: false,      // ScheduledModal
+  starred: false,        // StarredModal
+  vanish: false,         // VanishModeModal
+  mediaGallery: false,   // MediaGalleryModal
+  exportChat: false,     // ExportChatModal
+  conversationControl: false,
+  universalSearch: false,
+  deviceSync: false,
+  messageRecovery: false,
+  storageManager: false,
+  chatLock: false,
+  chatTimeline: false,
+}
+```
+
+---
+
+## 11. Features — How Each One Works
+
+### 11.1 🔐 Authentication
+1. User fills Login/Register form in `AuthContainer.jsx`
+2. `App.jsx` calls `AuthContext.login()` or `register()`
+3. `apiFetch("/api/auth/login", {POST})` sends credentials
+4. Backend `AuthService` validates → BCrypt password check → JWT generated
+5. Token stored in `localStorage`, `currentUser` updated
+6. App re-renders → main chat interface shown
+
+### 11.2 💬 Real-Time Messaging
+1. User types in ChatWindow input bar → click Send
+2. `ChatContext.sendMessage()` → `cryptoEngine.encryptPayload(content)` → returns `{ciphertext, iv}`
+3. STOMP `publish({destination: '/app/chat', body: JSON.stringify(messageDto)})`
+4. Backend saves to DB → broadcasts to both users via STOMP topics
+5. Both ChatContexts receive via subscription → `decryptPayload(content, iv)` → update state → re-render
+
+### 11.3 ✅ Message Status (Ticks)
+- **Single grey tick** = Saved to server
+- **Double grey tick** = Delivered to receiver's STOMP topic
+- **Double blue tick** = Receiver called `POST /api/messages/read/{sender}` → broadcast → sender UI updates
+
+### 11.4 ⌨️ Typing Indicator
+1. User types → debounced event fires → `PUBLISH /app/chat/typing {isTyping: true}`
+2. Backend broadcasts to `/topic/typing/{receiver}`
+3. Receiver's ChatContext shows "typing..." under contact name in sidebar
+4. Auto-clears after 3 seconds of no typing activity
+
+### 11.5 📞 Voice & Video Calls (WebRTC)
+```
+Caller:
+1. User clicks audio/video call button
+2. navigator.getUserMedia() → gets mic/camera stream
+3. Creates RTCPeerConnection
+4. Creates SDP offer
+5. STOMP PUBLISH /app/call/signal {type: "call-request", callerUsername, callType}
+
+Receiver:
+6. IncomingCallOverlay appears → ringtone plays
+7. User taps "Accept"
+8. Gets local stream → creates RTCPeerConnection
+9. Creates SDP answer → PUBLISH back
+
+Both:
+10. ICE candidates exchanged via /app/call/signal {type: "candidate", candidate: {...}}
+11. WebRTC P2P connection established (direct audio/video stream)
+
+End Call:
+12. PUBLISH {type: "call-end"} → both close streams
+13. POST /api/calls → saves CallRecord → broadcasts call history update
+14. Chat shows system message: "📞 Audio Call • 2:25"
+```
+
+### 11.6 👥 Group Chats
+1. User opens GroupModal → types group name → selects contacts
+2. `POST /api/groups` → ChatGroup saved in DB with Set<User> members
+3. Group messages sent with `groupId` field in MessageDto
+4. Backend broadcasts to ALL group members' individual topic channels
+
+### 11.7 📱 Status/Stories
+1. User creates status in StatusPanel → type: text/image/video, caption, background color
+2. `POST /api/statuses` → Status saved with `expiresAt = now + 24 hours`
+3. `GET /api/statuses` → returns only non-expired statuses of contacts (+ self)
+4. Frontend shows contact ring (green = unseen) → click → full screen story viewer
+
+### 11.8 🌟 Starred Messages
+1. Long press/right-click message → "Star" option
+2. `POST /api/messages/star/{id}` → toggles `isStarred`
+3. StarredModal shows all starred messages filtered from local message state
+
+### 11.9 📌 Pinned Messages
+1. Long press message → "Pin" → `POST /api/messages/pin/{id}` → toggles `isPinned`
+2. Pinned messages shown at top of chat with pin indicator
+
+### 11.10 😀 Emoji Reactions
+1. User taps message → emoji picker appears
+2. `POST /api/messages/react/{id}` with `{reaction: "👍"}`
+3. DB stores: `"alice:👍,bob:❤️"` (comma-separated key:value)
+4. Both users notified via WebSocket with updated full reaction string
+5. Frontend parses & displays emoji reactions below bubble
+
+### 11.11 🗓️ Scheduled Messages
+1. User opens ScheduledModal → enters message text + picks future date/time
+2. `POST /api/scheduled` → ScheduledMessage saved with `sendAt` timestamp
+3. Spring `@Scheduled` task (MessagePurgeScheduler) runs every minute
+4. When `sendAt <= now` → auto-sends message via MessageService
+
+### 11.12 💨 Vanish Mode
+1. User enables vanish mode via VanishModeModal for a specific conversation
+2. ConversationVanishMode record created for that chat pair
+3. After message is read (`readAt` set) → ConversationVanishModeService deletes it
+4. Periodic scheduler `MessagePurgeScheduler` cleans up expired vanish messages
+
+### 11.13 🔒 Chat Lock
+1. User opens ChatLockModal → sets a PIN code
+2. PIN stored only in browser localStorage (NOT sent to backend — privacy first)
+3. On next open of that chat → PIN prompt appears
+4. Correct PIN → chat unlocks
+
+### 11.14 💣 Self-Destruct Messages
+1. User sets `selfDestructSeconds` when composing (e.g., 30 seconds)
+2. Message sent with `expiresAt = timestamp + seconds`
+3. `MessagePurgeScheduler` (@Scheduled every minute) queries expired messages
+4. Deletes from DB → broadcasts deletion event to both users
+5. Both clients remove the message from UI
+
+### 11.15 📊 Analytics Dashboard
+AnalyticsPanel.jsx shows:
+- Total messages sent/received
+- Total calls made + duration
+- AI feature usage count
+- Most active contacts
+
+### 11.16 🔒 Privacy Settings
+Granular per-user controls (stored in `privacy_settings` table):
+- **Last Seen:** Who can see when you were last online
+- **Online Status:** Who can see "Online" indicator
+- **Profile Photo:** Who can see your picture
+- **About:** Who can see your about text
+- **Read Receipts:** Toggle blue ticks globally
+- **Group Privacy:** Who can add you to groups
+- **Call Privacy:** Who can call you
+
+If privacy settings hide something → backend API automatically redacts the field.
+
+### 11.17 📤 Export Chat
+1. User opens ExportChatModal → selects date range
+2. Frontend filters messages from local state
+3. Generates downloadable `.txt` or `.html` file
+4. Browser `download` attribute triggers file save
+
+### 11.18 🔍 Universal Search
+1. User opens UniversalSearchModal → types search term
+2. Frontend searches across ALL chat message objects in local state
+3. Returns matching messages with contact name + timestamp context
+
+### 11.19 🚨 Panic Wipe
+Emergency privacy feature:
+1. `DELETE /api/messages/panic-wipe`
+2. Backend finds ALL messages where user is sender OR receiver
+3. For each message → broadcasts WebSocket deletion event to all involved parties
+4. All messages purged from DB
+5. Both parties' UIs clear those messages instantly
+
+### 11.20 📷 Media Sharing
+1. User selects file → `POST /api/media/upload` (multipart)
+2. File saved in backend `/uploads/` folder
+3. Message sent with `isMedia: true, mediaUrl, mediaType, fileName, fileSize`
+4. Receiver sees inline image/video preview or download button for docs
+
+### 11.21 📍 Location Messages
+Messages have `latitude` and `longitude` fields — can send location pin in chat.
+
+### 11.22 🤖 AI Assistant (16 Features)
+All accessible from ChatWindow AI panel → any feature → AI processes → returns response + privacy report.
+
+---
+
+## 12. Request Flow Diagrams
+
+### 12.1 Login Flow
+```
+Click Login → AuthContext.login(username, pwd)
+    → apiFetch("/api/auth/login", POST, {username, pwd})
+    → AuthController.login()
+    → AuthService.authenticate()
+    → UserRepository.findByUsername()
+    → BCrypt.matches(input, stored hash) ✓
+    → JwtUtil.generateToken(username)
+    → { token, username }
+    → localStorage.setItem("token", token)
+    → isAuthenticated = true
+    → App re-renders main chat UI
+```
+
+### 12.2 Send Message Flow
+```
+User types → Click Send
+    → cryptoEngine.encryptPayload(content) → {ciphertext, iv}
+    → stompClient.publish({destination: "/app/chat", body: messageDto})
+    → [WebSocket] Backend MessageController.processMessage(@Payload)
+    → MessageService.saveMessage() → PostgreSQL INSERT
+    → messagingTemplate.convertAndSend("/topic/messages/receiver", response)
+    → messagingTemplate.convertAndSend("/topic/messages/sender", response)
+    → Both ChatContexts: subscription receives message
+    → cryptoEngine.decryptPayload(content, iv) → plaintext
+    → setMessages(updated) → localStorage.setItem(CHAT_STORAGE_PREFIX, ...)
+    → ChatWindow re-renders with new message bubble
+```
+
+### 12.3 AI Feature Flow (Summarize Example)
+```
+Click "Summarize Chat"
+    → Build transcript from current chat messages
+    → [If cloud AI selected] → show privacy permission modal
+    → User allows → apiFetch("/api/ai/summarize", POST, {text: transcript})
+    → apiFetch adds Authorization: Bearer {token}
+    → AiController.postSummarize(AiRequestDto)
+    → AiService.getChatSummary(transcript)
+    → executeWithReport(promptManager.getSummarizePrompt(transcript))
+    → AiProviderManager.selectProvider() → Gemini (if API key set)
+    → GeminiAiProvider.generate(promptText)
+    → RestTemplate.postForObject("https://generativelanguage.googleapis.com/...", body)
+    → Parse response → extract text
+    → Return AiReportResponse { responseText, provider: "Gemini", processingMode: "Cloud", 
+                                sentOutsideDevice: true, processingTimeSeconds: 2.3, status: "Completed" }
+    → Frontend displays summary + privacy transparency card
+```
+
+### 12.4 Incoming Call Flow
+```
+Caller clicks "Call" button
+    → CallContext.startCall(contactUsername, "audio")
+    → navigator.getUserMedia({audio: true}) → localStream
+    → stompClient.publish("/app/call/signal", {type: "call-request", callerUsername, callType: "audio"})
+    → Backend: /topic/calls/{receiverUsername} → receiver's CallContext triggered
+    → Receiver sees IncomingCallOverlay (Accept / Reject)
+    → Receiver clicks Accept → Creates peer connection → createAnswer()
+    → PUBLISH /app/call/signal {type: "answer", sdp}
+    → ICE candidate exchange via /app/call/signal {type: "candidate"}
+    → WebRTC P2P connection ✓ → Audio streams flowing directly
+    → Either user clicks End → {type: "call-end"} broadcast
+    → POST /api/calls → CallRecord saved
+    → /topic/callhistory/ broadcast → both see updated call history
+```
+
+---
+
+## 13. Database Models
+
+### Users Table
+```
+id              BIGINT PK
+username        VARCHAR UNIQUE NOT NULL
+email           VARCHAR
+phone_number    VARCHAR
+password        VARCHAR (BCrypt hashed, never stored plain)
+profile_pic_url VARCHAR (URL to backend /uploads/ or external URL)
+about           VARCHAR (status text like "Hey there!")
+last_seen       TIMESTAMP (updated on disconnect)
+```
+
+### Messages Table (Full Schema)
+```
+id                    BIGINT PK
+sender_id             FK → users
+receiver_id           FK → users (null for groups)
+group_id              FK → chat_groups (null for direct)
+content               TEXT (AES encrypted ciphertext)
+timestamp             TIMESTAMP
+status                VARCHAR (sent/delivered/read)
+parent_message_id     BIGINT (for reply-to)
+parent_message_text   TEXT
+parent_message_sender VARCHAR
+is_forwarded          BOOLEAN
+is_starred            BOOLEAN
+is_pinned             BOOLEAN
+reactions             TEXT (format: "user1:emoji1,user2:emoji2")
+is_media              BOOLEAN
+media_url             VARCHAR
+media_type            VARCHAR (image/video/document/audio)
+file_name             VARCHAR
+file_size             BIGINT (bytes)
+message_type          VARCHAR (TEXT/CALL/MEDIA)
+call_type             VARCHAR (AUDIO/VIDEO) — for call system messages
+call_status           VARCHAR (COMPLETED/MISSED/REJECTED/BUSY...)
+call_duration         INTEGER (seconds)
+call_started_at       TIMESTAMP
+call_ended_at         TIMESTAMP
+iv                    VARCHAR (AES-256 encryption IV, base64)
+self_destruct_seconds INTEGER
+expires_at            TIMESTAMP (for self-destruct or vanish mode)
+read_at               TIMESTAMP
+is_priority           BOOLEAN (priority/flagged messages)
+latitude              DOUBLE (location sharing)
+longitude             DOUBLE
+```
+
+### AI Settings Table (Singleton)
+```
+id (always 1)                       BIGINT PK
+preferred_provider                   VARCHAR (AUTO/DEVICE/LOCAL/CLOUD)
+ask_permission_every_time            BOOLEAN
+always_allow_cloud                   BOOLEAN
+disable_cloud_ai                     BOOLEAN
+prefer_local_processing              BOOLEAN
+never_automatically_send_to_cloud    BOOLEAN
+show_privacy_notice_before_cloud     BOOLEAN
+```
+
+---
+
+## 14. Prototype Design Steps
+
+### 14.1 Required Screens
+
+#### Screen 1: Authentication
+- **Background:** Full screen `#0d1117`
+- **Center Card:** Glassmorphism `rgba(22,27,34,0.82)`, `backdrop-filter: blur(12px)`, border `#30363d`, max-width 420px, border-radius 16px
+- **Logo:** Circle icon (chat bubble), color `#00a884`, size 48px
+- **App Name:** "Setu Connect" white bold 24px
+- **Tagline:** "Secure. Smart. Yours." `#8b949e` 14px
+- **Inputs:** Background `#0d1117`, border `#30363d`, focus border `#00a884`, text `#e6edf3`
+- **Submit Button:** Background `#00a884`, white text, hover `#008f72`, radius 8px, full width
+- **Toggle link:** "Create Account / Login" in `#00a884`
+- **Error:** Red banner `rgba(248,81,73,0.15)` with red border
+
+#### Screen 2: Main Chat Interface
+
+**Sidebar (360px total):**
+- Nav Rail (60px): Background `#0d1117`, icons `#8b949e`, active icon background `#00a884` circle
+- Panel Area (300px): Background `#161b22`
+  - Header: App name + green "+" new chat button
+  - Search bar: Background `#21262d`, placeholder `#8b949e`
+  - Contact rows: 72px height, avatar 48px, name `#e6edf3`, last message `#8b949e`, time `#8b949e`, unread badge `#00a884` circle
+
+**Chat Area (fills remaining):**
+- Background: `#0b141a` (slightly different from sidebar)
+- Header (60px): Contact name white, "Online" in `#00a884`, call icons `#8b949e`
+- Message bubbles:
+  - Sent: `#005c4b`, right-aligned, border-radius `18px 18px 4px 18px`
+  - Received: `#202c33`, left-aligned, border-radius `18px 18px 18px 4px`
+  - Text color: `#e6edf3`
+  - Timestamp + status ticks: `#8b949e`, small font 11px
+- Input bar (52px): Background `#2a3942`, text `#e6edf3`, send button `#00a884`
+
+#### Screen 3: AI Feature Panel (inline)
+- Slides up from bottom OR as right sidebar panel
+- Background: `#161b22`, border-top `#30363d`
+- Grid of AI feature cards: 4 columns, `#21262d` background, hover border `#00a884`, green icon
+- Response text area: scrollable, `#e6edf3` text
+- Privacy Report card: small, shows Provider badge + Mode + Sent Outside indicator
+
+#### Screen 4: Incoming Call Overlay
+- Fixed position, full screen background blur + dark overlay
+- Center card: glassmorphism
+- Contact avatar: 100px circle
+- Contact name: white bold 20px
+- Call type: "Incoming Audio Call" `#8b949e`
+- Buttons: Accept (green `#00a884`, phone-up icon) | Reject (red `#f85149`, phone-down icon)
+- Avatar pulsing ring animation: `#00a884` glow ring
+
+#### Screen 5: Active Call Window
+- Full screen
+- Background: `#0b141a` (audio) OR remote video (video call)
+- Local video: small PiP bottom-right, 150×100px
+- Contact name: top center, white
+- Timer: "02:25" below name
+- Control bar (bottom): mute mic | toggle camera | end call (red circle, 60px)
+
+#### Screen 6: Settings Panel
+Sections:
+- Profile: avatar + edit name/about/phone
+- Privacy: toggles for each setting (styled toggle switches, green `#00a884` when on)
+- AI Provider: radio buttons (AUTO/DEVICE/LOCAL/CLOUD), current provider badge
+- Cloud AI toggles: "Ask permission", "Always allow", "Disable cloud" 
+- Theme: Dark/Light toggle
+- Danger Zone: "Delete Account" in red, "Panic Wipe" in red
+
+### 14.2 User Flows to Prototype
+
+**Flow 1: Onboarding → First Message**
+```
+Auth Screen → Register → Main App → Empty state "Add a contact" 
+→ Click "+" → Search by phone → User found → Add Contact 
+→ Contact appears in list → Click → Chat opens → Type → Send
+→ Message bubble appears → Grey single tick
+```
+
+**Flow 2: AI Summarize**
+```
+Open chat with messages → Click AI icon (sparkle icon in header)
+→ AI Panel slides up showing 16 feature cards
+→ Click "Summarize Chat" → Privacy notice popup (if cloud)
+→ Click Allow → Loading spinner → 
+→ Response shown: "• Summary: ...\n• Key Points: ...\n• Decisions: ..."
+→ Privacy card: "Provider: Gemini | Cloud | Data Sent: Yes | 2.3s"
+```
+
+**Flow 3: Voice Call**
+```
+Open chat → Click phone icon in header
+→ "Calling alice..." screen
+→ [Other device] Incoming call overlay → Accept
+→ Call connected → Timer starts → AudioCallWindow
+→ End → "Audio Call • 2:25" system message in chat
+```
+
+### 14.3 Animation Specs for Prototype
+| Interaction | Animation |
+|---|---|
+| Modal open | Scale from 0.95→1.0 + fade in, 350ms ease |
+| Message send | Slide in from right (sent) / left (received), 200ms |
+| AI panel open | Slide up from bottom, 350ms ease |
+| Tab switch | Cross-fade content, 200ms |
+| Incoming call | Fade in + avatar ring pulse |
+| Hover: list item | Background `rgba(255,255,255,0.05)`, 200ms |
+| Hover: button | `translateY(-1px)`, 200ms |
+| Typing indicator | 3-dot bounce (dot1→dot2→dot3 staggered) |
+| Unread badge | Pop scale from 0→1, bounce |
+
+### 14.4 Key Layout Dimensions
+| Element | Dimension |
+|---|---|
+| Sidebar total | 360px (60px rail + 300px panel) |
+| Chat header | 60px height |
+| Message input bar | 52px height |
+| Contact row | 72px height |
+| Avatar (chat list) | 48px × 48px circle |
+| Avatar (call) | 100px × 100px circle |
+| Message bubble max-width | 65% of chat area |
+| Modal width | 480px–680px |
+| Modal border-radius | 16px |
+| Bubble border-radius | 18px/4px (sender corner sharp) |
+
+---
+
+## 15. Quick Start Guide
+
+### Local Development
+
+**Step 1: Start Backend**
+```bash
+cd realtime-chat-app/backend
+# Configure application.properties or env vars:
+# SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/chatapp
+# SPRING_DATASOURCE_USERNAME=postgres
+# SPRING_DATASOURCE_PASSWORD=yourpassword
+# gemini.api.key=YOUR_GEMINI_API_KEY  (optional — for AI features)
+# Ollama NOT required — app works without it
+
+mvn spring-boot:run
+# Runs on: http://localhost:8081
+```
+
+**Step 2: Start Frontend**
+```bash
+cd realtime-chat-app/frontend
+npm install
+npm run dev
+# Runs on: http://localhost:5173
+```
+
+**Step 3: Access App**
+- Open browser: `http://localhost:5173`
+- Register new account
+- Add a contact by phone number
+- Start chatting!
+
+> **Note on AI:** If `gemini.api.key` is not configured, AI features show "AI Unavailable" but ALL other features (chat, calls, status, groups, etc.) work perfectly.
+
+---
+
+*Document ends — This is the complete technical reference for Setu Connect v2.0*

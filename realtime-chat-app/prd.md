@@ -1,168 +1,333 @@
 # Product Requirements Document (PRD)
 
-## Project: WhatsApp Clone with Local AI Integration (Ollama)
-**Author:** Neetesh Dixit 
-**Status:** DRAFT (Under Review)  
+## Project: Setu Connect — Secure Real-Time Chat with Multi-Provider AI
+**Author:** Neetesh Dixit  
+**Status:** APPROVED (Updated v2.0 — August 2026)  
 **Target Architecture:** Java Full Stack (Spring Boot + React)  
+**Key Update:** Migrated from Ollama-only AI to Multi-Provider AI system (Device → Ollama → Gemini). Redis removed. Presence managed in-memory.
 
 ---
 
 ## 1. Executive Summary & Objective
 
-This document outlines the product requirements and architectural design for a high-performance, real-time messaging application similar to WhatsApp. 
+Setu Connect is a high-performance, real-time messaging application built for enterprise teams. It provides WhatsApp-level user experience with enterprise-grade security, privacy controls, and AI-powered productivity features.
 
-### What makes this project unique?
-Traditional chat apps rely on expensive, third-party cloud APIs (like OpenAI or Gemini) for smart features, exposing private conversation data to external companies. This project implements a **Self-Hosted, Privacy-First AI Architecture** where:
-*   Real-time chat is powered by **Spring Boot WebSockets** and cached via **Redis**.
-*   AI features (such as chat summarization and action-item tracking) are processed locally on the host machine using **Ollama** (via **Spring AI**).
-*   Messages are protected using advanced data-privacy patterns (transient decrypted syncing) to ensure private chat logs are never permanently stored in plaintext on any server.
+### What makes Setu Connect unique?
+
+| Feature | Standard Chat Apps | Setu Connect |
+|---|---|---|
+| AI data privacy | Silently sends to cloud AI | Full transparency report on every AI call |
+| AI provider | Single cloud provider | Multi-tier: Device → Ollama → Gemini |
+| Message encryption | Server-side (or none) | AES-256 client-side before sending |
+| Emergency privacy | No panic wipe | One-click purge of all messages |
+| Call integration | Third-party SDK | WebRTC P2P, no external call server |
+| AI cost | Per-token cloud billing | Local AI = $0 per token |
 
 ---
 
-## 2. Tech Stack Definition
+## 2. Tech Stack Definition (Current v2.0)
 
-| Component | Technology | Role / Purpose |
-| :--- | :--- | :--- |
-| **Backend Framework** | Spring Boot 3.x (Java 17/21) | Core application logic, security, REST APIs, WebSockets. |
-| **Frontend UI** | React.js (Vite, TypeScript, Tailwind CSS) | Dynamic, single-page application mimicking WhatsApp Web. |
-| **Primary Database** | PostgreSQL | Persistent relational storage for Users, Chats, and Messages. |
-| **In-Memory Store** | Redis | Low-latency storage for user presence (online status) and typing indicators. |
-| **Real-time Protocol** | STOMP over WebSockets (SockJS) | Message broadcasting, read receipts, and streaming events. |
-| **AI Integration Engine** | Spring AI + Local Ollama (Phi-3/Llama-3) | Local NLP engine for summary generation and task extraction. |
-| **Build Tools** | Maven & npm | Package and dependency management. |
+| Component | Technology | Version | Role |
+|---|---|---|---|
+| **Backend Framework** | Spring Boot (Java 17) | 3.3.0 | Core logic, REST APIs, WebSocket |
+| **Frontend UI** | React.js + Vite | React 19, Vite 8 | Single-page application |
+| **Styling** | Vanilla CSS (CSS Variables) | — | Theme system, dark/light mode |
+| **Primary Database** | PostgreSQL | Latest | Users, messages, contacts, calls, etc. |
+| **Real-time Protocol** | STOMP over WebSockets (SockJS) | — | Messaging, presence, call signaling |
+| **AI Provider 1** | Device AI (Browser/OS) | — | Local, zero-network AI (placeholder) |
+| **AI Provider 2** | Ollama (local server) | Via Spring AI | Optional local AI (llama3.2, etc.) |
+| **AI Provider 3** | Google Gemini Flash 1.5 | REST API | Cloud AI fallback |
+| **Authentication** | JWT (HMAC-SHA256) | jjwt 0.11.5 | Stateless token auth |
+| **Build Tools** | Maven + npm | — | Backend + Frontend dependency management |
+| **Deployment** | Vercel (Frontend) + Render (Backend) | — | Production hosting |
+
+> **⚠️ Removed Dependencies vs. v1.0 PRD:**
+> - ~~Redis~~ — Presence now managed in-memory (`ConcurrentHashMap`). Typing indicators via WebSocket TTL (client-side). Trade-off: presence resets on backend restart.
+> - ~~TypeScript~~ — Frontend uses plain JavaScript (JSX).
+> - ~~Tailwind CSS~~ — Replaced with Vanilla CSS + CSS custom properties.
 
 ---
 
 ## 3. Core Features & Functional Requirements
 
 ### 3.1. User Onboarding & Security
-*   **Registration & Authentication:** Email/username-based sign-up with password hashing (BCrypt) and JWT-based authentication.
-*   **Session Management:** JWT tokens returned on login. Tokens will be validated during both HTTP REST calls and WebSocket connection handshakes.
+*   **Registration:** Username + Email + Phone + Password. BCrypt hashed storage.
+*   **Authentication:** JWT token (24h expiry). Token used for both REST API and WebSocket authentication.
+*   **Session Restore:** `GET /api/users/me` validates token and restores session on page refresh.
+*   **Account Management:** Edit profile, update about text, upload profile picture (JPG/PNG, max 5MB).
+*   **Account Delete:** `DELETE /api/users/me` — removes user, contacts, privacy settings from DB.
 
 ### 3.2. Real-Time Chat Engine
-*   **One-to-One Messaging:** Instantly send/receive private text messages between two online users via WebSocket.
-*   **Group Chat Messaging:** Multiple members can join a group conversation. Messages sent to the group channel are broadcast to all online group participants.
-*   **Message Lifecycle Status (Delivery Ticks):**
-    *   `SENT` (✓) - Message successfully written to the server's PostgreSQL DB.
-    *   `DELIVERED` (✓✓) - Client's device acknowledges receipt of the incoming WebSocket packet.
-    *   `READ` (🔵✓✓) - Recipient actively opens/views the chat view.
-*   **Offline Support (Queueing):** If a recipient is offline, the backend keeps the message database state as `SENT`. Upon the recipient establishing a WebSocket handshake, all pending messages are fetched and flushed down the socket channel.
+*   **One-to-One Messaging:** AES-256 encrypted message sent via WebSocket STOMP. Both users receive via topic subscriptions.
+*   **Group Chat Messaging:** Messages sent with groupId, broadcast to all members.
+*   **Message Lifecycle Status:**
+    - `sent` (✓) — Written to DB
+    - `delivered` (✓✓) — Received by client subscription (implicit on message arrival)
+    - `read` (🔵✓✓) — Explicit `POST /api/messages/read/{sender}` call
+*   **Offline Queuing:** Messages typed while WebSocket is down queued in `localStorage`. Flushed on reconnect.
+*   **Message Persistence:** All messages cached in `localStorage` key `setu_chat_history_v2`. Chat never lost on page refresh.
 
-### 3.3. Live Presence & Indicators (Redis-Backed)
-*   **Online/Offline Status:** User's connection state. Managed in Redis via active WebSocket connections and client-sent heartbeat pings.
-*   **Last Seen Timestamp:** Updated in PostgreSQL whenever a user disconnects or stops sending heartbeats.
-*   **Typing... Indicator:** Dynamic indicator displaying when a user is writing. Keys expire automatically from Redis after 3 seconds of inactivity.
+### 3.3. Advanced Message Features
+*   **Reply (Quote):** Reply to specific messages with parent message preview.
+*   **Forward:** Forward message to another contact.
+*   **Star:** Bookmark important messages. View all starred in StarredModal.
+*   **Pin:** Pin messages to top of chat.
+*   **Emoji Reactions:** React to any message with any emoji. Multiple users can react.
+*   **Delete:** Delete own message within 15 minutes (broadcasts deletion to both parties).
+*   **Self-Destruct:** Set expiry timer on message (auto-deleted by backend scheduler after expiry).
+*   **Priority Flag:** Mark message as priority/important.
+*   **Location Share:** Send latitude/longitude in message.
+*   **Panic Wipe:** Emergency purge of ALL user messages from DB + real-time broadcast.
 
-### 3.4. Local AI Summarization (The USP)
-*   **Trigger Mechanism:** A button inside the chat window: "Summarize Conversation".
-*   **Transient Decrypted Flow:**
-    1.  The React frontend decrypts the local message logs.
-    2.  The React app sends the plain text of the last $N$ messages to `/api/ai/summarize`.
-    3.  Spring Boot passes this text to the local Ollama instance running the **Llama-3** or **Phi-3** model.
-    4.  The response is returned to the user, and the backend wipes the plain text from the server's volatile memory.
-*   **Streaming UI:** Long-running summarizations are streamed token-by-token over WebSockets or SSE (Server-Sent Events) to keep the client UI responsive.
+### 3.4. Media Sharing
+*   **File Types:** Images, videos, documents, audio files.
+*   **Upload:** `POST /api/media/upload` (multipart). Stored in `/uploads/` directory.
+*   **Download/Preview:** Inline image/video preview. Document shows filename + download button.
+
+### 3.5. Live Presence & Indicators (In-Memory)
+*   **Online Status:** WebSocket connection tracked in `ConcurrentHashMap<sessionId, username>`.
+*   **Typing Indicator:** Client-side 3-second timer. WebSocket broadcast on keypress.
+*   **Last Seen:** Stored in DB on WebSocket disconnect.
+*   **Privacy Controls:** Per-user visibility settings for last seen, online status, profile photo, about text.
+
+### 3.6. Voice & Video Calls (WebRTC)
+*   **Call Types:** Audio call, Video call.
+*   **Signaling:** WebSocket STOMP topic `/topic/calls/{username}` for offer/answer/ICE candidate exchange.
+*   **P2P Connection:** RTCPeerConnection direct between browsers — no media server needed.
+*   **Call Record:** Saved to DB on call end with status (COMPLETED/MISSED/REJECTED/BUSY/CANCELLED/OFFLINE).
+*   **Call History:** Shown in Calls tab with direction (incoming/outgoing), duration, peer avatar.
+*   **System Message:** Call end auto-generates a call summary message in the chat (e.g., "📞 Audio Call • 2:25").
+
+### 3.7. Multi-Provider AI Features (The Core USP)
+
+**AI Provider Selection Logic (AiProviderManager):**
+```
+AUTO mode (default):
+  1. DeviceAiProvider.isAvailable()? → use device AI
+  2. OllamaAiProvider.isAvailable()? → ping localhost:11434 → use if running
+  3. GeminiAiProvider.isAvailable()? → check if API key configured → use cloud
+  4. All fail → return "AI Unavailable"
+```
+
+**16 AI Features Available:**
+1. **Chat Summarize** — Bullet summary + key points + decisions
+2. **Smart Reply** — 3 context-aware reply suggestions
+3. **Rewrite Message** — Change tone (formal/casual/professional)
+4. **Grammar Fix** — Correct spelling & grammar
+5. **Translate** — Translate to any language
+6. **Extract Tasks** — Pull action items from conversation
+7. **Detect Meeting** — Find meeting schedules (structured JSON)
+8. **Set Reminder** — Extract reminder info (structured JSON)
+9. **Generate Chat Title** — 4-word topic title
+10. **Detect Mood** — Emotional analysis (JSON + confidence score)
+11. **Convert to Notes** — Structured notes from conversation
+12. **Explain Simply** — Simplify technical/long text (by level)
+13. **Draft Email** — Professional email from chat context
+14. **Improve Message** — Improve clarity before sending
+15. **Daily Summary** — Day's messaging + calling activity
+16. **AI Chat Assistant** — Multi-turn conversational AI
+
+**Privacy Transparency (Every AI Response):**
+```json
+{
+  "provider": "Gemini | Ollama | Device | None",
+  "processingMode": "Cloud | Local | N/A",
+  "sentOutsideDevice": true | false,
+  "temporaryBufferReleased": true,
+  "processingTimeSeconds": 2.3,
+  "status": "Completed | Failed | Unavailable"
+}
+```
+
+### 3.8. Status/Stories (WhatsApp-Style)
+*   Post text, image, or video statuses with 24-hour expiry.
+*   View contacts' active statuses in Status tab.
+*   Status viewer with progress bar, caption, timestamp.
+*   Text statuses support custom background colors.
+
+### 3.9. Group Chats
+*   Create group with custom name and multiple members.
+*   Group messages broadcast to all members in real-time.
+*   Group info: member list, group name (editable).
+
+### 3.10. Scheduled Messages
+*   Compose a message with a future send time.
+*   Backend Spring `@Scheduled` task checks every minute and auto-sends.
+
+### 3.11. Vanish Mode
+*   Enable per-conversation — messages auto-deleted after being read.
+*   Backend service + scheduler handles deletion.
+
+### 3.12. Privacy & Security Controls
+*   Per-field visibility: Last Seen, Online, Profile Photo, About, Read Receipts, Group Add, Call Privacy.
+*   Options: EVERYONE / CONTACTS / NOBODY.
+*   Server enforces these rules — not just UI hints.
+
+### 3.13. Analytics Dashboard
+*   Total messages sent/received count.
+*   Total calls made + total duration.
+*   AI features usage tracking.
+*   Most active contacts list.
+
+### 3.14. Contact Management
+*   Add contacts by phone number or username search.
+*   Custom display names for contacts.
+*   Remove contacts.
 
 ---
 
-## 4. Database Schema Design (PostgreSQL)
+## 4. Database Schema (Implemented via JPA/Hibernate)
 
-```sql
--- 1. Users Table
-CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    profile_pic_url VARCHAR(255),
-    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+All tables created automatically via `spring.jpa.hibernate.ddl-auto=update`.
 
--- 2. Chats (Conversations) Table
-CREATE TABLE chats (
-    id BIGSERIAL PRIMARY KEY,
-    type VARCHAR(20) NOT NULL, -- 'ONE_TO_ONE' or 'GROUP'
-    name VARCHAR(100), -- Null for one-to-one, custom name for groups
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 3. Chat Members Table (Mapping Users to Chats)
-CREATE TABLE chat_members (
-    chat_id BIGINT REFERENCES chats(id) ON DELETE CASCADE,
-    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (chat_id, user_id)
-);
-
--- 4. Messages Table
-CREATE TABLE messages (
-    id BIGSERIAL PRIMARY KEY,
-    chat_id BIGINT REFERENCES chats(id) ON DELETE CASCADE,
-    sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'SENT', -- 'SENT', 'DELIVERED', 'READ'
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 5. Performance Indexes
-CREATE INDEX idx_messages_chat_timestamp ON messages (chat_id, sent_at DESC);
-CREATE INDEX idx_users_username ON users (username);
+```
+users:              id, username, email, phone_number, password (BCrypt), profile_pic_url, about, last_seen
+messages:           id, sender_id, receiver_id, group_id, content, timestamp, status, 
+                    parent_message_id, parent_message_text, parent_message_sender,
+                    is_forwarded, is_starred, is_pinned, reactions,
+                    is_media, media_url, media_type, file_name, file_size, message_type,
+                    call_type, call_status, call_duration, call_started_at, call_ended_at,
+                    iv (AES IV), self_destruct_seconds, expires_at, read_at, 
+                    is_priority, latitude, longitude
+contacts:           id, owner_id, contact_user_id, custom_name
+chat_groups:        id, name, members (ManyToMany → users)
+call_records:       id, caller_id, receiver_id, call_type, status, duration_seconds, timestamp, started_at, ended_at
+statuses:           id, user_id, media_url, caption, type, text_background, expires_at, created_at
+privacy_settings:   id, user_id, last_seen_visibility, online_visibility, profile_photo_visibility, 
+                    about_visibility, read_receipts, group_privacy, call_privacy
+ai_settings:        id (always 1), preferred_provider, ask_permission_every_time, 
+                    always_allow_cloud, disable_cloud_ai, prefer_local_processing,
+                    never_automatically_send_to_cloud, show_privacy_notice_before_cloud
+scheduled_messages: id, sender_id, receiver_id, content, send_at, sent
+conversation_vanish_mode: id, user1_id, user2_id, enabled
 ```
 
 ---
 
-## 5. System Architecture Flow & Endpoints
+## 5. System Architecture & All Endpoints
 
-### 5.1. REST API Endpoints
+### 5.1. REST API — Complete Endpoint Reference
 
-| Method | Endpoint | Description | Auth Required |
-| :--- | :--- | :--- | :--- |
-| **POST** | `/api/auth/register` | Register a new user account | No |
-| **POST** | `/api/auth/login` | Login and return JWT Token | No |
-| **GET** | `/api/chats` | Retrieve list of all conversations for current user | Yes (JWT) |
-| **POST** | `/api/chats` | Create a new Chat (One-to-One or Group) | Yes (JWT) |
-| **GET** | `/api/chats/{chatId}/messages` | Paginated message logs for a specific chat (Keyset based) | Yes (JWT) |
-| **POST**| `/api/ai/summarize` | Send transient chat logs to Ollama for summary | Yes (JWT) |
+**Auth:**
+- `POST /api/auth/register` — Register new user
+- `POST /api/auth/login` — Login, get JWT
 
-### 5.2. WebSocket Topic Directory (STOMP Client Subscriptions)
+**Users:**
+- `GET /api/users/me` — Get current user
+- `GET /api/users` — List all users
+- `GET /api/users/search?query=...` — Search by phone/username
+- `PUT /api/users/profile` — Update profile fields
+- `PUT /api/users/about` — Update about text
+- `GET /api/users/{username}/profile` — Get profile (privacy-filtered)
+- `GET /api/users/privacy` — Get privacy settings
+- `PUT /api/users/privacy` — Update privacy settings
+- `POST /api/users/profile-image` — Upload profile picture
+- `GET /api/users/profile-image/{filename}` — Serve profile picture
+- `DELETE /api/users/me` — Delete account
 
-*   **Inbound Channel:** Send message: `/app/chat.send`
-*   **Outbound Subscription:** Private messages & Receipts: `/user/queue/messages`
-*   **Group Subscription:** Broadcast channel: `/topic/chat/{chatId}`
-*   **Presence Subscription:** User status updates: `/topic/presence`
+**Messages:**
+- `GET /api/messages/{u1}/{u2}` — Get chat history
+- `GET /api/messages/partners/{username}` — Get chat partner list with last message
+- `POST /api/messages/read/{senderUsername}` — Mark messages as read
+- `DELETE /api/messages/{id}` — Delete message (15 min limit)
+- `POST /api/messages/star/{id}` — Toggle star
+- `POST /api/messages/pin/{id}` — Toggle pin
+- `POST /api/messages/react/{id}` — Add/remove emoji reaction
+- `DELETE /api/messages/panic-wipe` — Emergency wipe all messages
+- `GET /api/users/online` — Get set of online usernames
+
+**Contacts:**
+- `GET /api/contacts` — Get contacts
+- `POST /api/contacts` — Add contact
+- `DELETE /api/contacts/{id}` — Remove contact
+
+**Groups:**
+- `GET /api/groups` — Get user's groups
+- `POST /api/groups` — Create group
+
+**Calls:**
+- `GET /api/calls` — Get call history
+- `POST /api/calls` — Save call record
+
+**Statuses:**
+- `GET /api/statuses` — Get active statuses of contacts
+- `POST /api/statuses` — Post new status
+
+**AI:**
+- `GET /api/ai/status` — Current provider status
+- `GET /api/ai/preflight` — Pre-flight check (cloud permission needed?)
+- `GET /api/ai/settings` — Get AI settings
+- `POST /api/ai/settings` — Save AI settings
+- `GET /api/ai/summarize/{u1}/{u2}` — Summarize a conversation
+- `POST /api/ai/summarize` — Summarize (custom text)
+- `POST /api/ai/smart-reply` — Get smart replies
+- `POST /api/ai/rewrite` — Rewrite message
+- `POST /api/ai/grammar` — Fix grammar
+- `POST /api/ai/translate` — Translate message
+- `POST /api/ai/tasks` — Extract action items
+- `POST /api/ai/meetings` — Detect meeting
+- `POST /api/ai/reminders` — Extract reminders
+- `POST /api/ai/title` — Generate chat title
+- `POST /api/ai/mood` — Detect mood
+- `POST /api/ai/notes` — Convert to notes
+- `POST /api/ai/explain` — Explain text
+- `POST /api/ai/email` — Draft email
+- `POST /api/ai/improve` — Improve message
+- `POST /api/ai/daily-summary` — Daily activity summary
+- `POST /api/ai/chat` — Conversational AI
+
+**Scheduled Messages:**
+- `GET /api/scheduled` — Get scheduled messages
+- `POST /api/scheduled` — Create scheduled message
+
+**Vanish Mode:**
+- `GET /api/vanish-mode/{u1}/{u2}` — Check vanish mode
+- `POST /api/vanish-mode` — Enable/disable vanish mode
+
+**Analytics:**
+- `GET /api/analytics/messages` — Message stats
+- `GET /api/analytics/calls` — Call stats
+
+**Media:**
+- `POST /api/media/upload` — Upload file
+
+### 5.2. WebSocket Topic Directory (STOMP)
+- **Connect endpoint:** `/ws` (SockJS + native WebSocket)
+- **Send message:** PUBLISH → `/app/chat`
+- **Receive messages:** SUBSCRIBE → `/topic/messages/{username}`
+- **Typing indicator:** PUBLISH → `/app/chat/typing` | SUBSCRIBE → `/topic/typing/{username}`
+- **Call signaling:** PUBLISH → `/app/call/signal` | SUBSCRIBE → `/topic/calls/{username}`
+- **Call history update:** SUBSCRIBE → `/topic/callhistory/{username}`
+- **Read receipts:** SUBSCRIBE → `/topic/messages/read/{username}`
+- **Presence connect:** PUBLISH → `/app/presence/connect`
 
 ---
 
-## 6. Implementation Roadmap (Step-by-Step Plan)
+## 6. Implementation Status (What's Built)
 
-### Phase 1: Core Setup & REST API
-1.  Initialize Spring Boot 3 with Web, PostgreSQL JPA, Validation, and Lombok dependencies.
-2.  Set up local PostgreSQL DB (configured via `application.properties`).
-3.  Write the user registration/login flow and secure all other endpoints using Spring Security JWT.
-
-### Phase 2: WebSocket Messaging Core
-1.  Configure Spring WebSocket with STOMP message broker.
-2.  Build the message persistence handler: intercept incoming WebSocket payloads, write them to PostgreSQL as `SENT`, and push them to recipient subscription.
-3.  Implement delivery tick feedbacks (`SENT` -> `DELIVERED`).
-
-### Phase 3: High-Performance Cache (Redis Integration)
-1.  Set up local Redis connection inside Spring Boot.
-2.  Write the online/offline presence status tracker using Redis keys with short TTLs.
-3.  Build the typing indicator mechanism with Redis auto-expiry keys.
-
-### Phase 4: Local Ollama & Spring AI Pipeline
-1.  Integrate `spring-ai-ollama` starter inside the backend dependencies.
-2.  Configure prompt templates for summaries and action items.
-3.  Implement asynchronous controller with Spring's `@Async` and reactive streaming for the token-by-token summarizer.
-
-### Phase 5: Responsive React Frontend
-1.  Setup React (Vite + TypeScript) and Tailwind CSS.
-2.  Build the login, user list, and chat screen UI.
-3.  Connect to the STOMP server using SockJS.
-4.  Implement local state management for pagination, message ticks, typing triggers, and the AI summary box.
+| Phase | Feature Area | Status |
+|---|---|---|
+| Phase 1 | Auth (register/login/JWT) | ✅ Complete |
+| Phase 2 | Real-time messaging + read receipts | ✅ Complete |
+| Phase 3 | Presence (in-memory, no Redis) | ✅ Complete |
+| Phase 4 | AI Integration (multi-provider) | ✅ Complete |
+| Phase 5 | React Frontend (full UI) | ✅ Complete |
+| Phase 6 | Voice/Video calls (WebRTC) | ✅ Complete |
+| Phase 7 | Groups, Status, Analytics | ✅ Complete |
+| Phase 8 | Privacy settings + Panic Wipe | ✅ Complete |
+| Phase 9 | Scheduled messages + Vanish mode | ✅ Complete |
+| Phase 10 | AES-256 message encryption | ✅ Complete |
+| Phase 11 | Vercel + Render deployment | ✅ Complete |
 
 ---
 
-## 7. Crucial Edge Cases & Risks
-*   **Ollama Server Unavailability:** If Ollama is offline or crashes on the host machine, the backend must return a friendly error message (*"AI summarizer is offline, please try later"*) without breaking the core chat functions.
-*   **WebSocket Disconnects during LLM stream:** If the user closes the window while the AI is streaming a summary, the backend should detect the canceled stream and stop requesting tokens from Ollama to save system RAM/CPU.
+## 7. Edge Cases & System Resilience
+
+*   **Ollama Unavailable:** `OllamaAiProvider.isAvailable()` catches exceptions. AUTO mode falls through to Gemini. Core chat unaffected.
+*   **Gemini API Key Not Set:** `GeminiAiProvider.isAvailable()` checks for non-blank API key. Returns null provider if not set.
+*   **All AI Providers Fail:** `AiService.executeWithReport()` receives null provider → returns graceful "AI Unavailable" response.
+*   **WebSocket Disconnect:** STOMP client auto-reconnects. Offline messages queued in localStorage, flushed on reconnect.
+*   **Message Delete Time Exceeded:** Backend checks timestamp + 15 minutes. Returns HTTP 400 if exceeded.
+*   **Call to Offline User:** `offlineNotice` toast shown. `POST /api/calls` saves with status "offline".
+*   **File Upload Too Large:** Backend validates size before saving. Returns HTTP 400.
+*   **Backend Restart:** All in-memory presence data lost. Users appear offline until they reconnect (within seconds for active users).
