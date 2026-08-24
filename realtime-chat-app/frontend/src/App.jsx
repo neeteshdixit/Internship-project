@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider, useUI } from './context/UIContext';
-import { ChatProvider } from './context/ChatContext';
+import { ChatProvider, useChat } from './context/ChatContext';
 import { CallProvider, useCall } from './context/CallContext';
 import { BellRing } from 'lucide-react';
+import useIsMobile from './hooks/useIsMobile';
 
 import AuthContainer from './components/Auth/AuthContainer';
 import Sidebar from './components/Sidebar/Sidebar';
@@ -30,6 +31,9 @@ import ActiveCallWindow from './components/calls/ActiveCallWindow';
 const MainContent = () => {
   const { isAuthenticated, loading, login, register } = useAuth();
   const { modals } = useUI();
+  const { selectedContact } = useChat();
+  const { offlineNotice } = useCall();
+  const isMobile = useIsMobile();
 
   const [authMode, setAuthMode] = useState('login');
   const [usernameInput, setUsernameInput] = useState('');
@@ -108,9 +112,10 @@ const MainContent = () => {
     );
   }
 
-  const { offlineNotice } = useCall();
+  // Main Dashboard layout — on mobile show one pane at a time (chat list OR conversation)
+  const showChatPane = !isMobile || !!selectedContact;
+  const showSidebarPane = !isMobile || !selectedContact;
 
-  // Main Dashboard layout
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#0b141a', position: 'relative' }}>
       {/* Offline Call Notification Toast Banner */}
@@ -140,8 +145,8 @@ const MainContent = () => {
         </div>
       )}
 
-      <Sidebar />
-      <ChatWindow />
+      {showSidebarPane && <Sidebar />}
+      {showChatPane && <ChatWindow />}
 
       {/* Voice & Video Call Overlays */}
       <IncomingCallOverlay />

@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useUI } from '../../context/UIContext';
 import { apiFetch } from '../../lib/apiFetch';
+import useIsMobile from '../../hooks/useIsMobile';
 import { MessageSquare, Radio, Phone, BarChart2, Settings, Search, Plus, Users, UserPlus, FileText, Image } from 'lucide-react';
 import StatusPanel from './StatusPanel';
 import CallsPanel from './CallsPanel';
@@ -12,6 +13,7 @@ import SettingsPanel from './SettingsPanel';
 const FILTERS = ['ALL', 'FAVORITES', 'ARCHIVED', 'BLOCKED', 'MUTED', 'WORK', 'PERSONAL', 'FAMILY'];
 
 export default function Sidebar() {
+  const isMobile = useIsMobile();
   const { currentUser, logout } = useAuth();
   const { contacts, selectedContact, selectContact, typingUsers, onlineUsers, unreadCounts, updateContactAttribute, messages, getChatKey } = useChat();
   const { activePanel, setActivePanel, toggleModal } = useUI();
@@ -59,8 +61,8 @@ export default function Sidebar() {
   ];
 
   const styles = {
-    sidebar: { width: '360px', minWidth: '360px', height: '100%', backgroundColor: '#111b21', display: 'flex', flexDirection: 'row' },
-    main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+    sidebar: { width: isMobile ? '100%' : '360px', minWidth: isMobile ? 0 : '360px', height: '100%', backgroundColor: '#111b21', display: 'flex', flexDirection: isMobile ? 'column' : 'row' },
+    main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', order: isMobile ? 1 : 0, minHeight: 0 },
     header: { padding: '12px 16px', backgroundColor: '#202c33', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #222d34' },
     avatar: { width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #00a884', cursor: 'pointer' },
     searchBar: { padding: '8px 12px', backgroundColor: '#111b21', borderBottom: '1px solid #1e2d35' },
@@ -73,14 +75,14 @@ export default function Sidebar() {
     footer: { padding: '10px 14px', backgroundColor: '#202c33', borderTop: '1px solid #222d34', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   };
 
-  if (activePanel === 'status') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} /><StatusPanel /></div>;
-  if (activePanel === 'calls') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} /><CallsPanel /></div>;
-  if (activePanel === 'analytics') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} /><AnalyticsPanel /></div>;
-  if (activePanel === 'settings') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} /><SettingsPanel /></div>;
+  if (activePanel === 'status') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} bottom={isMobile} /><StatusPanel /></div>;
+  if (activePanel === 'calls') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} bottom={isMobile} /><CallsPanel /></div>;
+  if (activePanel === 'analytics') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} bottom={isMobile} /><AnalyticsPanel /></div>;
+  if (activePanel === 'settings') return <div style={styles.sidebar}><NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} bottom={isMobile} /><SettingsPanel /></div>;
 
   return (
     <div style={styles.sidebar}>
-      <NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} />
+      <NavRail items={NAV_ITEMS} active={activePanel} setActive={setActivePanel} bottom={isMobile} />
       <div style={styles.main}>
         {/* Header */}
         <div style={styles.header}>
@@ -183,11 +185,25 @@ export default function Sidebar() {
   );
 }
 
-function NavRail({ items, active, setActive }) {
+function NavRail({ items, active, setActive, bottom }) {
   return (
-    <div style={{ width: '60px', backgroundColor: '#1a2630', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '10px', gap: '2px', borderRight: '1px solid #222d34' }}>
+    <div style={{
+      width: bottom ? '100%' : '60px',
+      backgroundColor: '#1a2630',
+      display: 'flex',
+      flexDirection: bottom ? 'row' : 'column',
+      alignItems: 'center',
+      justifyContent: bottom ? 'space-around' : 'flex-start',
+      paddingTop: bottom ? '6px' : '10px',
+      paddingBottom: bottom ? 'max(6px, env(safe-area-inset-bottom))' : '10px',
+      gap: '2px',
+      borderRight: bottom ? 'none' : '1px solid #222d34',
+      borderTop: bottom ? '1px solid #222d34' : 'none',
+      order: bottom ? 2 : 0,
+      flexShrink: 0,
+    }}>
       {items.map(({ id, icon: Icon, label }) => (
-        <button key={id} onClick={() => setActive(id)} title={label} style={{ background: active === id ? '#2a3942' : 'transparent', border: 'none', color: active === id ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '8px 6px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', width: '52px', transition: 'all 0.15s' }}>
+        <button key={id} onClick={() => setActive(id)} title={label} style={{ background: active === id ? '#2a3942' : 'transparent', border: 'none', color: active === id ? '#00a884' : '#8696a0', cursor: 'pointer', padding: bottom ? '6px 10px' : '8px 6px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', width: bottom ? 'auto' : '52px', minWidth: bottom ? '56px' : '52px', transition: 'all 0.15s' }}>
           <Icon size={18} />
           <span style={{ fontSize: '9px', fontWeight: 600 }}>{label}</span>
         </button>
@@ -223,7 +239,7 @@ function AddContactInline({ onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div style={{ backgroundColor: '#202c33', borderRadius: '12px', padding: '24px', width: '340px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ backgroundColor: '#202c33', borderRadius: '12px', padding: '24px', width: 'min(340px, calc(100vw - 32px))', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ color: '#e9edef', marginBottom: '16px', fontSize: '16px' }}>Add Contact</h3>
         <input type="text" placeholder="Username or phone number" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} style={{ width: '100%', padding: '10px 12px', backgroundColor: '#2a3942', border: 'none', borderRadius: '8px', color: '#e9edef', fontSize: '14px', outline: 'none', boxSizing: 'border-box', marginBottom: '10px' }} />
         <button onClick={search} disabled={loading} style={{ width: '100%', padding: '10px', backgroundColor: '#00a884', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 600, cursor: 'pointer', marginBottom: '10px' }}>{loading ? 'Searching...' : 'Search'}</button>

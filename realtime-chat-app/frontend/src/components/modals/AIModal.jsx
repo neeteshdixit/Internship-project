@@ -7,7 +7,7 @@ export default function AIModal() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ backgroundColor: 'var(--bg-dark)', width: '420px', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '20px', position: 'relative' }}>
+      <div style={{ backgroundColor: 'var(--bg-dark)', width: 'min(420px, calc(100vw - 24px))', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '20px', position: 'relative' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

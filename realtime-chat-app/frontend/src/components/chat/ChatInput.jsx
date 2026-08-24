@@ -87,7 +87,7 @@ function GifPicker({ onSelect, onClose }) {
   };
 
   return (
-    <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', width: '320px', height: '340px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', width: 'min(320px, calc(100vw - 56px))', height: '340px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, overflow: 'hidden' }}>
       <div style={{ padding: '8px', borderBottom: '1px solid #2a3942', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <input
           type="text"
@@ -121,7 +121,7 @@ function StickerPicker({ onSelect, onClose }) {
   const [activePack, setActivePack] = useState(0);
 
   return (
-    <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', width: '300px', height: '320px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', width: 'min(300px, calc(100vw - 56px))', height: '320px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #2a3942', padding: '6px 8px', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', flex: 1 }}>
           {STICKER_PACKS.map((pack, i) => (
@@ -406,7 +406,7 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
 
       {/* Emoji Picker */}
       {showEmoji && (
-        <div style={{ position: 'absolute', bottom: '65px', left: '16px', width: '300px', height: '200px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', padding: '8px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '2px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10 }}>
+        <div style={{ position: 'absolute', bottom: '65px', left: '16px', width: 'min(300px, calc(100vw - 32px))', height: '200px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', padding: '8px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(34px, 1fr))', gap: '2px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10 }}>
           {EMOJI_LIST.map(em => (
             <button key={em} type="button" onClick={() => setText(p => p + em)} style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '3px', borderRadius: '4px' }}>{em}</button>
           ))}
@@ -421,7 +421,7 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
 
       {/* Attach Menu */}
       {showAttach && (
-        <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, width: '200px' }}>
+        <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, width: 'min(200px, calc(100vw - 56px))' }}>
           <button type="button" onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}>
             <Image size={17} color="#00a884" /> Photos & Videos
           </button>

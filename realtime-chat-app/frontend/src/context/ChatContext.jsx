@@ -600,6 +600,9 @@ export const ChatProvider = ({ children }) => {
     }
   }, [currentUser, getChatKey, getChatKeyFromMsg, autoMarkRead]);
 
+  // Go back to chat list (used by mobile back navigation)
+  const clearSelectedContact = useCallback(() => setSelectedContact(null), []);
+
   const deleteMessage = useCallback(async (messageId) => {
     try {
       await apiFetch(`/api/messages/${messageId}`, { method: 'DELETE' });
@@ -694,6 +697,7 @@ export const ChatProvider = ({ children }) => {
         setContacts,
         selectedContact,
         selectContact,
+        clearSelectedContact,
         messages,
         setMessages,
         sendMessage,

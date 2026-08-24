@@ -63,7 +63,7 @@ export default function GroupModal() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => closeModal('group')}>
-      <div style={{ backgroundColor: '#202c33', width: '420px', maxHeight: '560px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ backgroundColor: '#202c33', width: 'min(420px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 32px))', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={{ padding: '16px 20px', backgroundColor: '#182229', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #2a3942' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#e9edef', fontSize: '16px', fontWeight: 600 }}>
@@ -102,7 +102,7 @@ export default function GroupModal() {
             <label style={{ fontSize: '12px', fontWeight: 600, color: '#8696a0', display: 'block', marginBottom: '8px' }}>
               ADD MEMBERS ({selectedUserIds.length} SELECTED)
             </label>
-            <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', backgroundColor: '#182229', padding: '8px', borderRadius: '8px' }}>
+            <div style={{ maxHeight: 'min(160px, calc(100dvh - 32px))', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', backgroundColor: '#182229', padding: '8px', borderRadius: '8px' }}>
               {availableUsers.length === 0 ? (
                 <div style={{ textAlign: 'center', color: '#8696a0', fontSize: '12px', padding: '12px' }}>No contacts found</div>
               ) : (

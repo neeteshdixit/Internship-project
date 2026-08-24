@@ -36,7 +36,7 @@ export default function StorageManagerModal() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => closeModal('storageManager')}>
-      <div style={{ width: '440px', backgroundColor: '#202c33', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: 'min(440px, calc(100vw - 24px))', backgroundColor: '#202c33', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={{ padding: '16px 20px', backgroundColor: '#182229', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #2a3942' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#e9edef', fontSize: '16px', fontWeight: 600 }}>
@@ -70,7 +70,7 @@ export default function StorageManagerModal() {
             Top Storage Conversations
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: 'min(160px, calc(100dvh - 32px))', overflowY: 'auto', marginBottom: '16px' }}>
             {contacts.slice(0, 4).map((c, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', backgroundColor: '#2a3942', borderRadius: '6px' }}>
                 <span style={{ fontSize: '13px', color: '#e9edef' }}>@{c.username || c.name}</span>

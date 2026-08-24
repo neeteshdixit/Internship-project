@@ -5,10 +5,12 @@ import { Lock, Search, X, ShieldCheck, AlertTriangle, EyeOff } from 'lucide-reac
 import ChatHeader from '../chat/ChatHeader';
 import MessageList from '../chat/MessageList';
 import ChatInput from '../chat/ChatInput';
+import useIsMobile from '../../hooks/useIsMobile';
 
 export default function ChatWindow() {
+  const isMobile = useIsMobile();
   const { currentUser } = useAuth();
-  const { selectedContact, messages, sendMessage, getChatKey, sendScreenshotAlert, screenshotAlert } = useChat();
+  const { selectedContact, clearSelectedContact, messages, sendMessage, getChatKey, sendScreenshotAlert, screenshotAlert } = useChat();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [replyMessage, setReplyMessage] = useState(null);
@@ -125,8 +127,11 @@ export default function ChatWindow() {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
+        width: isMobile ? '100%' : 'auto',
+        minWidth: 0,
         backgroundColor: WALLPAPER_BG[wallpaper] || '#0b141a',
         position: 'relative',
+        borderLeft: isMobile ? 'none' : '1px solid #222d34',
         filter: isBlurred ? 'blur(16px)' : 'none',
         transition: 'filter 0.15s ease',
       }}
@@ -143,6 +148,7 @@ export default function ChatWindow() {
         }}
         onToggleSearch={() => { setIsSearchOpen(!isSearchOpen); setSearchQuery(''); }}
         isSearchOpen={isSearchOpen}
+        onBack={isMobile ? clearSelectedContact : null}
       />
 
       {/* Screenshot Alert Toast Banner (Received from other user or locally detected) */}

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Phone, Video, Search, Star, Clock, EyeOff, AlertOctagon, Image, Download, Sliders, Sparkles } from 'lucide-react';
+import { Phone, Video, Search, Star, Clock, EyeOff, AlertOctagon, Image, Download, Sliders, Sparkles, ArrowLeft } from 'lucide-react';
 import { useUI } from '../../context/UIContext';
 import { useChat } from '../../context/ChatContext';
+import useIsMobile from '../../hooks/useIsMobile';
 
-export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen }) {
+export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen, onBack }) {
+  const isMobile = useIsMobile();
   const { toggleModal } = useUI();
   const { typingUsers, onlineUsers, toggleVanishMode, triggerPanicWipe, selectedContact } = useChat();
   const [showNukeConfirm, setShowNukeConfirm] = useState(false);
@@ -54,8 +56,18 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
         position: 'relative',
       }}
     >
-      {/* Left: Avatar & Info */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }} onClick={() => toggleModal('conversationControl', true)}>
+      {/* Left: Back (mobile) + Avatar & Info */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+        {onBack && (
+          <button
+            onClick={onBack}
+            title="Back to chats"
+            style={{ background: 'transparent', border: 'none', color: '#e9edef', cursor: 'pointer', padding: '4px', marginLeft: '-6px', display: 'flex', alignItems: 'center' }}
+          >
+            <ArrowLeft size={22} />
+          </button>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', minWidth: 0 }} onClick={() => toggleModal('conversationControl', true)}>
         <div style={{ position: 'relative' }}>
           <img
             src={activeChat?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeChat?.name || 'C')}&background=2a3942&color=aebac1&size=40`}
@@ -69,7 +81,7 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
 
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#e9edef', margin: 0 }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#e9edef', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: isMobile ? '38vw' : '220px' }}>
               {activeChat?.name}
             </h3>
             {isVanish && (
@@ -82,15 +94,16 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
             {isTyping ? 'typing...' : isOnline ? '● Online' : activeChat?.isGroup ? 'Group Conversation' : 'Offline'}
           </p>
         </div>
+        </div>
       </div>
 
-      {/* Right: Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#aebac1' }}>
+      {/* Right: Actions (horizontally scrollable on mobile) */}
+      <div className="hide-scrollbar" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#aebac1', overflowX: isMobile ? 'auto' : 'visible', maxWidth: isMobile ? '46%' : 'none', flexShrink: 0 }}>
         {/* 🥇 Conversation Control Center */}
         <button
           onClick={() => toggleModal('conversationControl', true)}
           title="Conversation Control Center"
-          style={{ background: 'transparent', border: 'none', color: '#00a884', cursor: 'pointer', padding: '7px', borderRadius: '50%' }}
+          style={{ background: 'transparent', border: 'none', color: '#00a884', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
         >
           <Sliders size={18} />
         </button>
@@ -99,7 +112,7 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
         <button
           onClick={() => toggleModal('chatTimeline', true)}
           title="Chat Memory Timeline"
-          style={{ background: 'transparent', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: '7px', borderRadius: '50%' }}
+          style={{ background: 'transparent', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
         >
           <Sparkles size={18} />
         </button>
@@ -113,24 +126,25 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
             border: isVanish ? '1px solid #4f46e5' : '1px solid transparent',
             color: isVanish ? '#818cf8' : '#aebac1',
             cursor: 'pointer',
-            padding: '5px 8px',
+            padding: isMobile ? '6px' : '5px 8px',
             borderRadius: '14px',
             fontSize: '11px',
             display: 'flex',
             alignItems: 'center',
             gap: '3px',
             fontWeight: 500,
+            flexShrink: 0,
           }}
         >
           <EyeOff size={14} />
-          <span>{isVanish ? 'Vanish ON' : 'Vanish'}</span>
+          {!isMobile && <span>{isVanish ? 'Vanish ON' : 'Vanish'}</span>}
         </button>
 
         {/* Media Gallery */}
         <button
           onClick={() => toggleModal('mediaGallery', true)}
           title="Media, Docs & Links Gallery"
-          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: '7px', borderRadius: '50%' }}
+          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
         >
           <Image size={17} />
         </button>
@@ -139,7 +153,7 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
         <button
           onClick={() => handleCall('VIDEO')}
           title="Video Call"
-          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: '7px', borderRadius: '50%' }}
+          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
         >
           <Video size={17} />
         </button>
@@ -148,7 +162,7 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
         <button
           onClick={() => handleCall('AUDIO')}
           title="Voice Call"
-          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: '7px', borderRadius: '50%' }}
+          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
         >
           <Phone size={17} />
         </button>
@@ -157,7 +171,7 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
         <button
           onClick={() => toggleModal('universalSearch', true)}
           title="Universal Search 2.0"
-          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: '7px', borderRadius: '50%' }}
+          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
         >
           <Search size={17} />
         </button>
@@ -171,24 +185,25 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen })
             border: '1px solid rgba(239, 68, 68, 0.3)',
             color: '#ef4444',
             cursor: 'pointer',
-            padding: '5px 8px',
+            padding: isMobile ? '6px' : '5px 8px',
             borderRadius: '14px',
             fontSize: '11px',
             display: 'flex',
             alignItems: 'center',
             gap: '3px',
             fontWeight: 600,
+            flexShrink: 0,
           }}
         >
           <AlertOctagon size={13} />
-          <span>Nuke</span>
+          {!isMobile && <span>Nuke</span>}
         </button>
       </div>
 
       {/* Emergency Nuke Confirmation Modal */}
       {showNukeConfirm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: '#202c33', borderRadius: '12px', padding: '24px', width: '360px', textAlign: 'center', border: '1px solid #ef4444', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+          <div style={{ backgroundColor: '#202c33', borderRadius: '12px', padding: '24px', width: 'min(360px, calc(100vw - 32px))', textAlign: 'center', border: '1px solid #ef4444', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
             <AlertOctagon size={48} color="#ef4444" style={{ marginBottom: '12px' }} />
             <h3 style={{ color: '#e9edef', fontSize: '18px', margin: '0 0 8px 0' }}>Emergency Panic Wipe</h3>
             <p style={{ color: '#8696a0', fontSize: '13px', lineHeight: 1.5, margin: '0 0 20px 0' }}>

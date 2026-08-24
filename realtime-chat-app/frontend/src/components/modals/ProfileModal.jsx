@@ -127,7 +127,7 @@ export default function ProfileModal() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => closeModal('profile')}>
-      <div style={{ backgroundColor: '#202c33', width: '420px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ backgroundColor: '#202c33', width: 'min(420px, calc(100vw - 24px))', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={{ padding: '16px 20px', backgroundColor: '#182229', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #2a3942' }}>
           <h3 style={{ color: '#e9edef', fontSize: '16px', fontWeight: 600, margin: 0 }}>Edit Profile</h3>

@@ -260,3 +260,40 @@ select {
 .auth-link:hover {
   text-decoration: underline;
 }
+
+/* ═══════════ Mobile / Responsive Fixes ═══════════ */
+
+/* Remove blue tap flash on buttons/links (mobile) */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Hide scrollbars for horizontally scrollable strips */
+.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 768px), (pointer: coarse) {
+  /* Prevent iOS Safari auto-zoom when focusing inputs (needs >=16px) */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Stop page bounce/overscroll behind fixed layouts */
+  html, body {
+    overscroll-behavior: none;
+    position: fixed;
+    inset: 0;
+  }
+
+  /* Dynamic viewport height where supported (mobile URL bars) */
+  @supports (height: 100dvh) {
+    html, body, #root { height: 100dvh; }
+  }
+
+  /* Thinner scrollbars feel more native on touch */
+  ::-webkit-scrollbar { width: 3px; height: 3px; }
+
+  /* Comfortable minimum touch targets */
+  button { min-height: 32px; }
+}
