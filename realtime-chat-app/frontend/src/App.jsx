@@ -70,7 +70,7 @@ const MainContent = () => {
 
   if (loading) {
     return (
-      <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1117' }}>
+      <div style={{ height: '100dvh', width: '100dvw', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1117' }}>
         <div style={{ color: '#00a884', fontSize: '18px', fontWeight: 600 }}>Loading Setu Connect...</div>
       </div>
     );
@@ -83,14 +83,14 @@ const MainContent = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: '100vh',
-        width: '100vw',
+        minHeight: '100dvh',
+        width: '100dvw',
         backgroundColor: '#0d1117',
         position: 'fixed',
         top: 0,
         left: 0,
         margin: 0,
-        padding: '20px',
+        padding: 'clamp(12px, 3vw, 20px)',
         boxSizing: 'border-box',
       }}>
         <AuthContainer
@@ -117,7 +117,7 @@ const MainContent = () => {
   const showSidebarPane = !isMobile || !selectedContact;
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#0b141a', position: 'relative' }}>
+    <div style={{ display: 'flex', height: '100dvh', width: '100dvw', overflow: 'hidden', backgroundColor: '#0b141a', position: 'relative' }}>
       {/* Offline Call Notification Toast Banner */}
       {offlineNotice && (
         <div

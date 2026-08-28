@@ -90,6 +90,10 @@ html, body, #root {
   overflow: hidden;
 }
 
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-darker);
@@ -296,4 +300,41 @@ button, a, [role="button"] {
 
   /* Comfortable minimum touch targets */
   button { min-height: 32px; }
+}
+
+/* ═══════════ Deep Responsive Polish ═══════════ */
+
+/* Auth card: breathe with the screen so it never overflows small phones */
+.auth-container { padding: clamp(20px, 6vw, 32px); max-width: 100%; }
+
+/* Generic modal guard: never exceed viewport height, always internally scrollable */
+.modal-card {
+  max-width: 94vw;
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Tighter chat paddings on small screens (CSS fallback for class-based layouts) */
+@media (max-width: 768px) {
+  .message-feed { padding: 10px 12px; }
+  .message-input-area { padding: 8px 10px; }
+  .chat-header { padding: 8px 12px; }
+  .sidebar-header { padding: 10px 12px; }
+}
+
+/* Very small phones: keep one-line rows compact */
+@media (max-width: 480px) {
+  .contact-card { padding: 10px 12px; }
+  .contact-card .avatar { width: 38px; height: 38px; }
+  .welcome-circle { width: 90px; height: 90px; }
+}
+
+/* Honor users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
