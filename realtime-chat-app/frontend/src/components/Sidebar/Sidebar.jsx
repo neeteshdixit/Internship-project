@@ -1,14 +1,15 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useUI } from '../../context/UIContext';
 import { apiFetch } from '../../lib/apiFetch';
 import useIsMobile from '../../hooks/useIsMobile';
-import { MessageSquare, Radio, Phone, BarChart2, Settings, Search, Plus, Users, UserPlus, FileText, Image } from 'lucide-react';
+import { MessageSquare, Radio, Phone, BarChart2, Settings, Search, Plus, Users, UserPlus, FileText, Image, Lock, Unlock, Pin, Star, ShieldCheck } from 'lucide-react';
 import StatusPanel from './StatusPanel';
 import CallsPanel from './CallsPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import SettingsPanel from './SettingsPanel';
+import ChatLockModal from '../modals/ChatLockModal';
 
 const FILTERS = ['ALL', 'FAVORITES', 'ARCHIVED', 'BLOCKED', 'MUTED', 'WORK', 'PERSONAL', 'FAMILY'];
 
@@ -20,12 +21,59 @@ export default function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [showAddContact, setShowAddContact] = useState(false);
+  const [showLockModal, setShowLockModal] = useState(false);
+  const [isFolderUnlocked, setIsFolderUnlocked] = useState(false);
+  const [lockedChatIds, setLockedChatIds] = useState(() => JSON.parse(localStorage.getItem('setu_locked_chats') || '[]'));
+
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      setLockedChatIds(JSON.parse(localStorage.getItem('setu_locked_chats') || '[]'));
+    };
+    window.addEventListener('locked_chats_updated', handleUpdate);
+    return () => window.removeEventListener('locked_chats_updated', handleUpdate);
+  }, []);
+
+  const handleToggleLock = (contact) => {
+    const contactId = String(contact.id || contact.username);
+    const isLocked = lockedChatIds.includes(contactId);
+    if (isLocked) {
+      const next = lockedChatIds.filter((id) => id !== contactId);
+      setLockedChatIds(next);
+      localStorage.setItem('setu_locked_chats', JSON.stringify(next));
+      window.dispatchEvent(new Event('locked_chats_updated'));
+    } else {
+      const savedPin = localStorage.getItem('setu_chat_lock_pin');
+      const next = [...lockedChatIds, contactId];
+      setLockedChatIds(next);
+      localStorage.setItem('setu_locked_chats', JSON.stringify(next));
+      window.dispatchEvent(new Event('locked_chats_updated'));
+      if (!savedPin) {
+        setShowLockModal(true);
+      }
+    }
+  };
+
+  const handleContactClick = (contact) => {
+    const contactId = String(contact.id || contact.username);
+    const isLocked = lockedChatIds.includes(contactId);
+    if (isLocked && !isFolderUnlocked) {
+      setShowLockModal(true);
+    } else {
+      selectContact(contact);
+    }
+  };
 
   const safeContacts = Array.isArray(contacts) ? contacts : [];
 
   // Global Search across contacts & message history
   const filteredContacts = safeContacts.filter((c) => {
     if (!c) return false;
+    const contactId = String(c.id || c.username);
+    const isLocked = lockedChatIds.includes(contactId);
+
+    // If folder is locked, hide locked contacts from the main list
+    if (isLocked && !isFolderUnlocked) return false;
+
     const name = c.customName || c.name || c.username || '';
     const q = (searchQuery || '').toLowerCase();
 
@@ -124,12 +172,81 @@ export default function Sidebar() {
 
         {/* Contacts */}
         <div style={styles.contactList}>
+          {/* WhatsApp-style Locked Chats folder entry */}
+          {lockedChatIds.length > 0 && (
+            <div
+              onClick={() => {
+                if (isFolderUnlocked) {
+                  setIsFolderUnlocked(false);
+                } else {
+                  setShowLockModal(true);
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '12px 14px',
+                cursor: 'pointer',
+                backgroundColor: isFolderUnlocked ? 'rgba(0, 168, 132, 0.12)' : '#182229',
+                borderBottom: '1px solid #222d34',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isFolderUnlocked) e.currentTarget.style.backgroundColor = '#202c33';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = isFolderUnlocked ? 'rgba(0, 168, 132, 0.12)' : '#182229';
+              }}
+            >
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '50%',
+                backgroundColor: isFolderUnlocked ? 'rgba(0,168,132,0.2)' : '#202c33',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: '12px',
+                border: isFolderUnlocked ? '1.5px solid #00a884' : '1px solid #2a3942',
+                color: '#00a884',
+                flexShrink: 0,
+                boxShadow: isFolderUnlocked ? '0 0 10px rgba(0,168,132,0.4)' : 'none',
+                transition: 'all 0.2s ease'
+              }}>
+                {isFolderUnlocked ? <Unlock size={20} /> : <Lock size={20} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 600, color: '#e9edef', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Locked chats
+                    <span style={{
+                      fontSize: '10px',
+                      backgroundColor: isFolderUnlocked ? '#00a884' : '#2a3942',
+                      color: isFolderUnlocked ? '#111b21' : '#00a884',
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                      fontWeight: 700
+                    }}>
+                      {isFolderUnlocked ? 'UNLOCKED' : `${lockedChatIds.length} LOCKED`}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: '11px', color: isFolderUnlocked ? '#00a884' : '#8696a0', fontWeight: 500 }}>
+                    {isFolderUnlocked ? 'Tap to Lock' : 'Tap to Unlock'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#8696a0', marginTop: '2px' }}>
+                  {isFolderUnlocked ? 'Showing protected conversations' : 'Tap to unlock with your set PIN'}
+                </div>
+              </div>
+            </div>
+          )}
+
           {filteredContacts.length === 0 ? (
             <div style={{ padding: '30px 20px', textAlign: 'center', color: '#8696a0', fontSize: '13px' }}>
               {activeFilter !== 'ALL' ? `No ${activeFilter.toLowerCase()} contacts` : 'No conversations found.'}<br />
               <span style={{ color: '#00a884', cursor: 'pointer', marginTop: '8px', display: 'block' }} onClick={() => setShowAddContact(true)}>+ Add contact to start chatting</span>
             </div>
-          ) : filteredContacts.map((contact) => {
+          ) : [...filteredContacts].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)).map((contact) => {
             const isSelected = selectedContact?.id === contact.id && selectedContact?.username === contact.username;
             const displayName = contact.customName || contact.name || contact.username || 'Contact';
             const rawName = contact.username || contact.name || '';
@@ -138,12 +255,27 @@ export default function Sidebar() {
             const chatKeyParts = [(currentUser?.username || '').toLowerCase(), rawName.toLowerCase()].filter(Boolean).sort();
             const chatKey = contact.isGroup ? `group:${contact.id}` : `direct:${chatKeyParts.join('|')}`;
             const unread = unreadCounts[chatKey] || 0;
+            const contactId = String(contact.id || contact.username);
+            const isChatLocked = lockedChatIds.includes(contactId);
+
+            // WhatsApp-style live last-message preview (decrypted, real-time)
+            const liveMsgs = (messages && messages[chatKey]) ? messages[chatKey] : [];
+            const lastLive = liveMsgs.length > 0 ? liveMsgs[liveMsgs.length - 1] : null;
+            const isVanishPreview = contact.vanishMode === true || (contact.vanishMode === undefined && !!selectedContact?.vanishMode);
+            const previewText = lastLive
+              ? (contact.isGroup && lastLive.senderUsername && lastLive.senderUsername.toLowerCase() !== (currentUser?.username || '').toLowerCase()
+                  ? `${lastLive.senderUsername}: `
+                  : '')
+                + (isVanishPreview ? '🔒 ' : '')
+                + (lastLive.viewOnce ? '🖼️ Photo' : (lastLive.content || lastLive.text || ''))
+              : (contact.lastMessage || (contact.isGroup ? 'Group chat' : 'Tap to start chatting'));
+            const previewTime = lastLive ? (lastLive.timestamp || lastLive.createdAt || Date.now()) : (contact.lastMessageTimestamp || contact.lastMessageTime || null);
 
             // Check if there is an unsent draft message
             const draftText = localStorage.getItem(`draft_${contact.id || contact.username}`);
 
             return (
-              <div key={contact.id || contact.username} onClick={() => selectContact(contact)} style={styles.contactItem(isSelected)}>
+              <div key={contact.id || contact.username} onClick={() => handleContactClick(contact)} style={styles.contactItem(isSelected)}>
                 <div style={{ position: 'relative', marginRight: '12px', flexShrink: 0 }}>
                   <img
                     src={contact.avatar || contact.profilePicUrl || contact.profilePictureUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=2a3942&color=aebac1&size=44`}
@@ -160,11 +292,96 @@ export default function Sidebar() {
                       {contact.isMuted && <span title="Muted" style={{ fontSize: '10px' }}>🔕</span>}
                       {contact.isFavorite && <span title="Favorite" style={{ fontSize: '10px' }}>⭐</span>}
                       {contact.isGroup && <span style={{ fontSize: '9px', backgroundColor: '#2a3942', color: '#8696a0', padding: '1px 5px', borderRadius: '8px', flexShrink: 0 }}>GROUP</span>}
+                      {isChatLocked && (
+                        <span
+                          title="Locked Chat"
+                          style={{
+                            fontSize: '9px',
+                            backgroundColor: 'rgba(0,168,132,0.18)',
+                            color: '#00a884',
+                            padding: '1px 5px',
+                            borderRadius: '8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '2px',
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Lock size={9} /> LOCKED
+                        </span>
+                      )}
                     </div>
-                    {unread > 0 && <span style={{ backgroundColor: '#00a884', color: '#fff', fontSize: '10px', fontWeight: 700, borderRadius: '10px', padding: '1px 6px', flexShrink: 0 }}>{unread}</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {/* Quick Pin, Star & Lock actions */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateContactAttribute(contact.id || contact.username, 'isPinned', !contact.isPinned);
+                        }}
+                        title={contact.isPinned ? 'Unpin chat' : 'Pin chat to top'}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: contact.isPinned ? '#00a884' : '#8696a0',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          borderRadius: '4px',
+                          opacity: contact.isPinned ? 1 : 0.45,
+                        }}
+                      >
+                        <Pin size={12} fill={contact.isPinned ? '#00a884' : 'none'} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateContactAttribute(contact.id || contact.username, 'isFavorite', !contact.isFavorite);
+                        }}
+                        title={contact.isFavorite ? 'Unfavorite' : 'Add to favorites'}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: contact.isFavorite ? '#f59e0b' : '#8696a0',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          borderRadius: '4px',
+                          opacity: contact.isFavorite ? 1 : 0.45,
+                        }}
+                      >
+                        <Star size={12} fill={contact.isFavorite ? '#f59e0b' : 'none'} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleLock(contact);
+                        }}
+                        title={isChatLocked ? 'Unlock chat' : 'Lock chat with PIN'}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: isChatLocked ? '#00a884' : '#8696a0',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          borderRadius: '4px',
+                          opacity: isChatLocked ? 1 : 0.45,
+                        }}
+                      >
+                        <Lock size={12} fill={isChatLocked ? '#00a884' : 'none'} />
+                      </button>
+                      {unread > 0 && <span style={{ backgroundColor: '#00a884', color: '#fff', fontSize: '10px', fontWeight: 700, borderRadius: '10px', padding: '1px 6px', flexShrink: 0 }}>{unread}</span>}
+                    </div>
                   </div>
                   <div style={{ fontSize: '12px', color: isTyping ? '#00a884' : draftText ? '#00a884' : '#8696a0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: (isTyping || draftText) ? 'italic' : 'normal' }}>
-                    {isTyping ? 'typing...' : draftText ? `Draft: ${draftText}` : (contact.lastMessage || (contact.isGroup ? 'Group chat' : 'Tap to start chatting'))}
+                    {isTyping ? 'typing...' : draftText ? `Draft: ${draftText}` : previewText}
                   </div>
                 </div>
               </div>
@@ -181,6 +398,16 @@ export default function Sidebar() {
 
       {/* Add Contact Modal */}
       {showAddContact && <AddContactInline onClose={() => setShowAddContact(false)} />}
+
+      {/* Chat Lock PIN Modal */}
+      <ChatLockModal
+        isOpen={showLockModal}
+        onClose={() => setShowLockModal(false)}
+        title="Unlock Locked Chats"
+        onUnlocked={() => {
+          setIsFolderUnlocked(true);
+        }}
+      />
     </div>
   );
 }

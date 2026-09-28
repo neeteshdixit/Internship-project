@@ -334,7 +334,7 @@ export function CallProvider({ children }) {
   };
 
   // Initiate Outgoing Call (Caller)
-  const initiateCall = useCallback(async (receiverUsername, callType = 'AUDIO') => {
+  const initiateCall = useCallback(async (receiverUsername, callType = 'AUDIO', options = {}) => {
     if (!receiverUsername || !currentUser) return;
     cleanupMediaAndPeer();
 
@@ -377,9 +377,11 @@ export function CallProvider({ children }) {
       direction: 'OUTGOING',
       status: 'CALLING',
       startedAt: new Date().toISOString(),
+      groupName: options.groupName || null,
+      isGroup: !!options.isGroup,
     };
     setActiveCall(callObj);
-    setCallStatusMessage(`Calling @${receiverUsername}...`);
+    setCallStatusMessage(options.groupName ? `Calling in ${options.groupName}...` : `Calling @${receiverUsername}...`);
 
     toneGenerator.playOutgoingDialTone();
 
@@ -618,9 +620,9 @@ export function CallProvider({ children }) {
   // Listen for 'start_call' global event dispatched by ChatHeader
   useEffect(() => {
     const handleStartCallEvent = (e) => {
-      const { receiver, callType } = e.detail || {};
+      const { receiver, callType, groupName, isGroup } = e.detail || {};
       if (!receiver) return;
-      initiateCall(receiver, callType || 'AUDIO');
+      initiateCall(receiver, callType || 'AUDIO', { groupName, isGroup });
     };
 
     window.addEventListener('start_call', handleStartCallEvent);

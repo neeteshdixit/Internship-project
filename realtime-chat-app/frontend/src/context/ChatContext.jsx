@@ -34,6 +34,7 @@ export const ChatProvider = ({ children }) => {
   const stompClientRef = useRef(null);
   const selectedContactRef = useRef(null);
   const typingTimersRef = useRef({});
+  const groupSubscriptionsRef = useRef({});
 
   // Automatically persist all chat messages to LocalStorage on every update
   useEffect(() => {
@@ -66,8 +67,26 @@ export const ChatProvider = ({ children }) => {
   }, [currentUser]);
 
   const autoMarkRead = useCallback(async (senderUsername) => {
-    try { await apiFetch(`/api/messages/read/${senderUsername}`, { method: 'POST' }); } catch (e) {}
-  }, []);
+    try {
+      await apiFetch(`/api/messages/read/${senderUsername}`, { method: 'POST' });
+      const nowIso = new Date().toISOString();
+      const chatKey = `direct:${[currentUser?.username?.toLowerCase(), senderUsername.toLowerCase()].filter(Boolean).sort().join('|')}`;
+      setMessages((prev) => {
+        if (!prev[chatKey]) return prev;
+        return {
+          ...prev,
+          [chatKey]: prev[chatKey].map((m) => {
+            const isSender = (m.senderUsername?.toLowerCase() === senderUsername.toLowerCase() ||
+                              m.sender?.username?.toLowerCase() === senderUsername.toLowerCase());
+            if (isSender && m.status !== 'read') {
+              return { ...m, status: 'read', readAt: m.readAt || nowIso };
+            }
+            return m;
+          }),
+        };
+      });
+    } catch (e) {}
+  }, [currentUser]);
 
   const flushOfflineQueue = useCallback((client) => {
     try {
@@ -107,11 +126,30 @@ export const ChatProvider = ({ children }) => {
 
   // Handle incoming STOMP message
   const handleIncomingMessage = useCallback(async (msg) => {
-    // 1. Check for system event: Panic Wipe / Nuke
-    if (msg.type === 'MESSAGE_DELETED' && msg.reason === 'PANIC_WIPE') {
-      setMessages({});
-      localStorage.removeItem(CHAT_STORAGE_PREFIX);
-      return;
+    // 1. Check for system event: Panic Wipe / Nuke / Single Message Delete
+    if (msg.type === 'MESSAGE_DELETED' || msg.messageType === 'MESSAGE_DELETED' || msg.content === 'DELETED') {
+      if (msg.reason === 'PANIC_WIPE') {
+        setMessages({});
+        localStorage.removeItem(CHAT_STORAGE_PREFIX);
+        return;
+      }
+      const targetId = msg.messageId || msg.id;
+      if (targetId) {
+        try {
+          const deletedIds = JSON.parse(localStorage.getItem('setu_deleted_msg_ids') || '[]');
+          deletedIds.push(String(targetId));
+          localStorage.setItem('setu_deleted_msg_ids', JSON.stringify([...new Set(deletedIds)]));
+        } catch (e) {}
+
+        setMessages((prev) => {
+          const next = {};
+          for (const key of Object.keys(prev)) {
+            next[key] = (prev[key] || []).filter((m) => String(m.id) !== String(targetId) && String(m._id) !== String(targetId) && String(m._localId) !== String(targetId));
+          }
+          return next;
+        });
+        return;
+      }
     }
     if (msg.type === 'NUKE_CHAT' && msg.chatKey) {
       setMessages((prev) => ({ ...prev, [msg.chatKey]: [] }));
@@ -121,11 +159,27 @@ export const ChatProvider = ({ children }) => {
     // 2. Check for system event: Vanish Mode Synced across both users
     if (msg.type === 'VANISH_MODE_UPDATED') {
       const isEnabled = !!msg.enabled;
-      const peer = (msg.peerUsername || msg.actorUsername || '').toLowerCase();
+      const myName = (currentUser?.username || '').toLowerCase();
+      let peer = '';
+      if (!msg.groupId) {
+        if (msg.conversationKey && msg.conversationKey.startsWith('direct:')) {
+          const parts = msg.conversationKey.replace('direct:', '').split('|');
+          peer = (parts.find((p) => p.toLowerCase() !== myName) || '').toLowerCase();
+        }
+        if (!peer && msg.targetPeer) {
+          peer = msg.targetPeer.toLowerCase();
+        }
+        if (!peer) {
+          const actor = (msg.actorUsername || '').toLowerCase();
+          const target = (msg.peerUsername || '').toLowerCase();
+          peer = (actor && actor !== myName) ? actor : target;
+        }
+      }
+
       setContacts((prev) =>
         prev.map((c) => {
           const cName = (c.username || c.name || '').toLowerCase();
-          if (cName === peer || (msg.groupId && c.id === msg.groupId)) {
+          if ((peer && cName === peer) || (msg.groupId && c.id === msg.groupId)) {
             return { ...c, vanishMode: isEnabled };
           }
           return c;
@@ -133,7 +187,7 @@ export const ChatProvider = ({ children }) => {
       );
       if (selectedContactRef.current) {
         const selName = (selectedContactRef.current.username || selectedContactRef.current.name || '').toLowerCase();
-        if (selName === peer || (msg.groupId && selectedContactRef.current.id === msg.groupId)) {
+        if ((peer && selName === peer) || (msg.groupId && selectedContactRef.current.id === msg.groupId)) {
           setSelectedContact((prev) => prev ? { ...prev, vanishMode: isEnabled } : null);
         }
       }
@@ -167,7 +221,17 @@ export const ChatProvider = ({ children }) => {
 
     let decryptedContent = msg.content;
     try {
-      if (msg.iv) decryptedContent = await decryptPayload(msg.content, msg.iv, chatKey);
+      if (msg.iv) {
+        const candidates = [
+          chatKey,
+          msg.groupId ? `group:${msg.groupId}` : null,
+          msg.group?.id ? `group:${msg.group.id}` : null,
+          selectedContactRef.current?.isGroup ? `group:${selectedContactRef.current.id}` : null,
+          'group:1',
+          '1',
+        ].filter(Boolean);
+        decryptedContent = await decryptPayload(msg.content, msg.iv, candidates);
+      }
     } catch (e) { console.error('Decryption failed:', e); }
 
     const processedMsg = { ...msg, content: decryptedContent };
@@ -271,10 +335,15 @@ export const ChatProvider = ({ children }) => {
       heartbeatOutgoing: 4000,
       onConnect: () => {
         setIsConnected(true);
-        // Direct messages and notifications
+        // Direct messages and notifications (both exact and lowercase username)
         client.subscribe(`/topic/messages/${currentUser.username}`, async (message) => {
           await handleIncomingMessage(JSON.parse(message.body));
         });
+        if (currentUser.username.toLowerCase() !== currentUser.username) {
+          client.subscribe(`/topic/messages/${currentUser.username.toLowerCase()}`, async (message) => {
+            await handleIncomingMessage(JSON.parse(message.body));
+          });
+        }
 
         // Typing indicator
         client.subscribe(`/topic/typing/${currentUser.username}`, (message) => {
@@ -307,10 +376,21 @@ export const ChatProvider = ({ children }) => {
         client.subscribe(`/topic/messages/read/${currentUser.username}`, (message) => {
           try {
             const readData = JSON.parse(message.body);
+            const readAt = readData.readAt || new Date().toISOString();
             const chatKey = `direct:${[currentUser.username.toLowerCase(), (readData.receiverUsername || '').toLowerCase()].sort().join('|')}`;
             setMessages((prev) => {
               if (!prev[chatKey]) return prev;
-              return { ...prev, [chatKey]: prev[chatKey].map((m) => (m.senderUsername?.toLowerCase() === currentUser.username?.toLowerCase() || m.sender?.username?.toLowerCase() === currentUser.username?.toLowerCase()) ? { ...m, status: 'read' } : m) };
+              return {
+                ...prev,
+                [chatKey]: prev[chatKey].map((m) => {
+                  const isMine = (m.senderUsername?.toLowerCase() === currentUser.username?.toLowerCase() ||
+                                  m.sender?.username?.toLowerCase() === currentUser.username?.toLowerCase());
+                  if (isMine && m.status !== 'read') {
+                    return { ...m, status: 'read', readAt: m.readAt || readAt };
+                  }
+                  return m;
+                })
+              };
             });
           } catch (e) {}
         });
@@ -413,20 +493,23 @@ export const ChatProvider = ({ children }) => {
 
   // Send Message
   const sendMessage = useCallback(async (content, options = {}) => {
-    if (!selectedContact || (!content?.trim() && !options.mediaUrl)) return;
+    const contact = options.targetContact || selectedContact;
+    if (!contact || (!content?.trim() && !options.mediaUrl)) return;
     const {
       mediaUrl = null,
       mediaType = 'TEXT',
+      messageType = null,
       fileName = null,
       fileSize = null,
       isViewOnce = false,
+      isForwarded = false,
       replyToId = null,
       replyToText = null,
       replyToSender = null,
       scheduleAt = null,
     } = options;
 
-    const chatKey = getChatKey(selectedContact);
+    const chatKey = getChatKey(contact);
     let ciphertext = content || '';
     let iv = null;
     try {
@@ -435,18 +518,25 @@ export const ChatProvider = ({ children }) => {
       iv = enc.iv;
     } catch (e) {}
 
+    const disappearingHours = contact.disappearingDurationHours || 0;
+    const selfDestructSeconds = disappearingHours > 0 ? disappearingHours * 3600 : null;
+
+    const finalMessageType = messageType || (isViewOnce ? 'VIEW_ONCE' : mediaType);
+
     const messageDto = {
       senderUsername: currentUser.username,
-      receiverUsername: selectedContact.isGroup ? null : (selectedContact.username || selectedContact.name),
-      groupId: selectedContact.isGroup ? selectedContact.id : null,
+      receiverUsername: contact.isGroup ? null : (contact.username || contact.name),
+      groupId: contact.isGroup ? contact.id : null,
       content: ciphertext,
       iv,
       mediaUrl,
       mediaType,
-      messageType: isViewOnce ? 'VIEW_ONCE' : mediaType,
+      messageType: finalMessageType,
       fileName,
       fileSize,
       isViewOnce,
+      isForwarded,
+      selfDestructSeconds,
       parentMessageId: replyToId,
       parentMessageText: replyToText,
       parentMessageSender: replyToSender,
@@ -458,19 +548,21 @@ export const ChatProvider = ({ children }) => {
       _localId: `local_${Date.now()}`,
       sender: { username: currentUser.username, id: currentUser.id },
       senderUsername: currentUser.username,
-      receiver: selectedContact.isGroup ? null : { username: selectedContact.username },
-      receiverUsername: selectedContact.isGroup ? null : selectedContact.username,
-      group: selectedContact.isGroup ? { id: selectedContact.id, name: selectedContact.name } : null,
-      groupId: selectedContact.isGroup ? selectedContact.id : null,
+      receiver: contact.isGroup ? null : { username: contact.username },
+      receiverUsername: contact.isGroup ? null : contact.username,
+      group: contact.isGroup ? { id: contact.id, name: contact.name } : null,
+      groupId: contact.isGroup ? contact.id : null,
       content: content || '',
       timestamp: new Date().toISOString(),
       status: 'sent',
-      messageType: isViewOnce ? 'VIEW_ONCE' : mediaType,
+      messageType: finalMessageType,
       mediaUrl,
       mediaType,
       fileName,
       fileSize,
       isViewOnce,
+      isForwarded,
+      selfDestructSeconds,
       parentMessageId: replyToId,
       parentMessageText: replyToText,
       parentMessageSender: replyToSender,
@@ -488,16 +580,25 @@ export const ChatProvider = ({ children }) => {
   // Broadcast Screenshot Attempt Alert to Peer
   const sendScreenshotAlert = useCallback(() => {
     if (!selectedContact || !stompClientRef.current?.connected) return;
-    const receiver = selectedContact.isGroup ? null : (selectedContact.username || selectedContact.name);
-    if (!receiver) return;
     const alertPayload = {
       type: 'SCREENSHOT_ATTEMPT',
-      username: currentUser.username,
+      username: currentUser?.username || 'A participant',
     };
-    stompClientRef.current.publish({
-      destination: `/topic/messages/${receiver}`,
-      body: JSON.stringify(alertPayload),
-    });
+    if (selectedContact.isGroup) {
+      if (selectedContact.id) {
+        stompClientRef.current.publish({
+          destination: `/topic/messages/group/${selectedContact.id}`,
+          body: JSON.stringify({ ...alertPayload, groupId: selectedContact.id }),
+        });
+      }
+    } else {
+      const receiver = selectedContact.username || selectedContact.name;
+      if (!receiver) return;
+      stompClientRef.current.publish({
+        destination: `/topic/messages/${receiver}`,
+        body: JSON.stringify(alertPayload),
+      });
+    }
   }, [selectedContact, currentUser]);
 
   // Mark View Once opened on both ends
@@ -569,29 +670,100 @@ export const ChatProvider = ({ children }) => {
     setUnreadCounts((prev) => ({ ...prev, [chatKey]: 0 }));
 
     // Fetch vanish state for conversation
-    if (!contact.isGroup && contact.username) {
+    if (contact.isGroup && contact.id) {
       try {
-        const vState = await apiFetch(`/api/vanish-mode/direct/${contact.username}`);
+        const vState = await apiFetch(`/api/vanish-mode/group/${contact.id}`);
         if (vState && vState.enabled !== undefined) {
-          contact.vanishMode = vState.enabled;
-          setSelectedContact((prev) => prev ? { ...prev, vanishMode: vState.enabled } : null);
+          const isEnabled = !!vState.enabled;
+          contact.vanishMode = isEnabled;
+          setContacts((prev) => prev.map((c) => (c.id === contact.id ? { ...c, vanishMode: isEnabled } : c)));
+          setSelectedContact((prev) => (prev && prev.id === contact.id ? { ...prev, vanishMode: isEnabled } : prev));
+        }
+      } catch (e) {}
+    } else if (contact.username || contact.name) {
+      const uName = contact.username || contact.name;
+      try {
+        const vState = await apiFetch(`/api/vanish-mode/direct/${uName}`);
+        if (vState && vState.enabled !== undefined) {
+          const isEnabled = !!vState.enabled;
+          contact.vanishMode = isEnabled;
+          setContacts((prev) => prev.map((c) => ((c.username === uName || c.name === uName) ? { ...c, vanishMode: isEnabled } : c)));
+          setSelectedContact((prev) => (prev && (prev.username === uName || prev.name === uName) ? { ...prev, vanishMode: isEnabled } : prev));
         }
       } catch (e) {}
     }
 
+    // If group, ensure WebSocket subscription to group topic
+    if (contact.isGroup && contact.id && stompClientRef.current?.connected) {
+      if (!groupSubscriptionsRef.current[contact.id]) {
+        try {
+          const sub = stompClientRef.current.subscribe(`/topic/group/${contact.id}`, async (message) => {
+            await handleIncomingMessage(JSON.parse(message.body));
+          });
+          groupSubscriptionsRef.current[contact.id] = sub;
+        } catch (e) {}
+      }
+    }
+
     try {
       const otherUsername = contact.username || contact.name;
-      const endpoint = contact.isGroup ? `/api/messages/group/${contact.id}` : `/api/messages/${currentUser.username}/${otherUsername}`;
-      const history = await apiFetch(endpoint);
-      if (Array.isArray(history) && history.length > 0) {
+      let history = null;
+      if (contact.isGroup) {
+        try {
+          history = await apiFetch(`/api/messages/group/${contact.id}`);
+        } catch (e) {
+          history = await apiFetch(`/api/groups/${contact.id}/messages`);
+        }
+      } else {
+        history = await apiFetch(`/api/messages/${currentUser.username}/${otherUsername}`);
+      }
+
+      if (Array.isArray(history)) {
         const decryptedHistory = await Promise.all(history.map(async (msg) => {
-          if (msg.iv) {
-            try { return { ...msg, content: await decryptPayload(msg.content, msg.iv, getChatKeyFromMsg(msg)) }; }
-            catch (e) { return msg; }
+          const iv = msg.iv;
+          if (iv && msg.content) {
+            const candidates = [
+              getChatKeyFromMsg(msg),
+              chatKey,
+              msg.groupId ? `group:${msg.groupId}` : null,
+              contact.isGroup ? `group:${contact.id}` : null,
+              `group:1`,
+            ].filter(Boolean);
+            try {
+              const dec = await decryptPayload(msg.content, iv, candidates);
+              return { ...msg, content: dec };
+            } catch (e) {
+              return msg;
+            }
           }
           return msg;
         }));
-        setMessages((prev) => ({ ...prev, [chatKey]: decryptedHistory }));
+        // Synchronize server history: respect deleted messages and never resurrect deleted rows
+        setMessages((prev) => {
+          const existing = (prev[chatKey] && Array.isArray(prev[chatKey])) ? prev[chatKey] : [];
+          const deletedIds = new Set(JSON.parse(localStorage.getItem('setu_deleted_msg_ids') || '[]'));
+          const pinnedMsgIds = new Set(JSON.parse(localStorage.getItem('setu_pinned_msg_ids') || '[]'));
+
+          // 1. Filter server messages against known deleted IDs and enforce pinned state
+          const validServerMsgs = decryptedHistory
+            .filter((m) => m && !deletedIds.has(String(m.id)) && !deletedIds.has(String(m._id)))
+            .map((m) => {
+              const isP = pinnedMsgIds.has(String(m.id)) || pinnedMsgIds.has(String(m._id)) || !!m.isPinned;
+              return isP ? { ...m, isPinned: true, selfDestructSeconds: null, expiresAt: null } : m;
+            });
+
+          // 2. Only preserve unconfirmed pending local messages
+          const pendingLocalMsgs = existing
+            .filter((m) => m && !m.id && m._localId && !deletedIds.has(String(m._localId)))
+            .map((m) => {
+              const isP = pinnedMsgIds.has(String(m._localId)) || !!m.isPinned;
+              return isP ? { ...m, isPinned: true, selfDestructSeconds: null, expiresAt: null } : m;
+            });
+
+          const combined = [...validServerMsgs, ...pendingLocalMsgs];
+          combined.sort((a, b) => new Date(a.timestamp || a.createdAt || 0).getTime() - new Date(b.timestamp || b.createdAt || 0).getTime());
+          return { ...prev, [chatKey]: combined };
+        });
       }
       if (!contact.isGroup && contact.username) autoMarkRead(contact.username);
     } catch (error) {
@@ -604,31 +776,160 @@ export const ChatProvider = ({ children }) => {
   const clearSelectedContact = useCallback(() => setSelectedContact(null), []);
 
   const deleteMessage = useCallback(async (messageId) => {
+    if (!messageId) return;
+
+    // 1. Mark as permanently deleted in localStorage
+    try {
+      const deletedIds = JSON.parse(localStorage.getItem('setu_deleted_msg_ids') || '[]');
+      deletedIds.push(String(messageId));
+      localStorage.setItem('setu_deleted_msg_ids', JSON.stringify([...new Set(deletedIds)]));
+    } catch (e) {}
+
+    // 2. Remove immediately from all conversations in state
+    setMessages((prev) => {
+      const next = {};
+      for (const key of Object.keys(prev)) {
+        next[key] = (prev[key] || []).filter(
+          (m) => String(m.id) !== String(messageId) && String(m._id) !== String(messageId) && String(m._localId) !== String(messageId)
+        );
+      }
+      return next;
+    });
+
+    // 3. Immediately purge from LocalStorage cache so refresh never brings it back
+    try {
+      const saved = localStorage.getItem(CHAT_STORAGE_PREFIX);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        for (const key of Object.keys(parsed)) {
+          parsed[key] = (parsed[key] || []).filter(
+            (m) => String(m.id) !== String(messageId) && String(m._id) !== String(messageId) && String(m._localId) !== String(messageId)
+          );
+        }
+        localStorage.setItem(CHAT_STORAGE_PREFIX, JSON.stringify(parsed));
+      }
+    } catch (e) {}
+
+    // 4. Call backend to delete permanently from DB
     try {
       await apiFetch(`/api/messages/${messageId}`, { method: 'DELETE' });
-      const chatKey = selectedContact ? getChatKey(selectedContact) : null;
-      if (!chatKey) return;
-      setMessages((prev) => ({ ...prev, [chatKey]: (prev[chatKey] || []).map((m) => m.id === messageId ? { ...m, deleted: true, content: '🚫 This message was deleted' } : m) }));
-    } catch (e) { console.error('Delete failed:', e); }
-  }, [selectedContact, getChatKey]);
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
+  }, []);
 
   const starMessage = useCallback(async (messageId, starred) => {
+    // 1. Optimistic update in UI
+    const chatKey = selectedContact ? getChatKey(selectedContact) : null;
+    if (chatKey) {
+      setMessages((prev) => ({
+        ...prev,
+        [chatKey]: (prev[chatKey] || []).map((m) => (m.id === messageId ? { ...m, isStarred: starred } : m)),
+      }));
+    }
+    // 2. Call backend
     try {
-      await apiFetch(`/api/messages/${messageId}/star`, { method: 'PUT', body: JSON.stringify({ starred }) });
-      const chatKey = selectedContact ? getChatKey(selectedContact) : null;
-      if (!chatKey) return;
-      setMessages((prev) => ({ ...prev, [chatKey]: (prev[chatKey] || []).map((m) => m.id === messageId ? { ...m, isStarred: starred } : m) }));
-    } catch (e) { console.error('Star failed:', e); }
+      await apiFetch(`/api/messages/star/${messageId}`, {
+        method: 'POST',
+        body: JSON.stringify({ starred }),
+      });
+    } catch (e) {
+      console.error('Star failed:', e);
+    }
   }, [selectedContact, getChatKey]);
 
   const pinMessage = useCallback(async (messageId, pinned) => {
+    if (!messageId) return;
+    const strId = String(messageId);
+
+    // 1. Persist pinned message ID in localStorage
     try {
-      await apiFetch(`/api/messages/${messageId}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) });
-      const chatKey = selectedContact ? getChatKey(selectedContact) : null;
-      if (!chatKey) return;
-      setMessages((prev) => ({ ...prev, [chatKey]: (prev[chatKey] || []).map((m) => m.id === messageId ? { ...m, isPinned: pinned } : m) }));
-    } catch (e) { console.error('Pin failed:', e); }
+      let pinnedMsgIds = JSON.parse(localStorage.getItem('setu_pinned_msg_ids') || '[]');
+      if (pinned) {
+        if (!pinnedMsgIds.includes(strId)) pinnedMsgIds.push(strId);
+      } else {
+        pinnedMsgIds = pinnedMsgIds.filter((id) => id !== strId);
+      }
+      localStorage.setItem('setu_pinned_msg_ids', JSON.stringify(pinnedMsgIds));
+    } catch (e) {}
+
+    // 2. Optimistic update in UI: set isPinned, clear vanish countdown
+    const chatKey = selectedContact ? getChatKey(selectedContact) : null;
+    if (chatKey) {
+      setMessages((prev) => ({
+        ...prev,
+        [chatKey]: (prev[chatKey] || []).map((m) =>
+          String(m.id) === strId || String(m._id) === strId || String(m._localId) === strId
+            ? { ...m, isPinned: pinned, selfDestructSeconds: pinned ? null : m.selfDestructSeconds, expiresAt: pinned ? null : m.expiresAt }
+            : m
+        ),
+      }));
+    }
+
+    // 3. Call backend
+    try {
+      await apiFetch(`/api/messages/pin/${messageId}`, {
+        method: 'POST',
+        body: JSON.stringify({ pinned }),
+      });
+    } catch (e) {
+      console.error('Pin failed:', e);
+    }
   }, [selectedContact, getChatKey]);
+
+  const updateContactAttribute = useCallback(async (contactId, attribute, value) => {
+    if (!contactId) return;
+    const strId = String(contactId);
+
+    // 1. Maintain dedicated pinned and favorite chat sets in localStorage
+    if (attribute === 'isPinned') {
+      try {
+        let pinnedChats = JSON.parse(localStorage.getItem('setu_pinned_chat_ids') || '[]');
+        if (value) {
+          if (!pinnedChats.includes(strId)) pinnedChats.push(strId);
+        } else {
+          pinnedChats = pinnedChats.filter((id) => id !== strId);
+        }
+        localStorage.setItem('setu_pinned_chat_ids', JSON.stringify(pinnedChats));
+      } catch (e) {}
+    } else if (attribute === 'isFavorite') {
+      try {
+        let favChats = JSON.parse(localStorage.getItem('setu_favorite_chat_ids') || '[]');
+        if (value) {
+          if (!favChats.includes(strId)) favChats.push(strId);
+        } else {
+          favChats = favChats.filter((id) => id !== strId);
+        }
+        localStorage.setItem('setu_favorite_chat_ids', JSON.stringify(favChats));
+      } catch (e) {}
+    }
+
+    // 2. Optimistically update local contacts
+    setContacts((prev) =>
+      prev.map((c) => {
+        if (String(c.id) === strId || String(c.username) === strId) {
+          return { ...c, [attribute]: value };
+        }
+        return c;
+      })
+    );
+    if (selectedContact && (String(selectedContact.id) === strId || String(selectedContact.username) === strId)) {
+      setSelectedContact((prev) => (prev ? { ...prev, [attribute]: value } : prev));
+    }
+
+    // 3. Sync to backend if numeric contact id exists
+    try {
+      const target = contacts.find((c) => String(c.id) === strId || String(c.username) === strId);
+      if (target && typeof target.id === 'number') {
+        await apiFetch(`/api/contacts/${target.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ [attribute]: value }),
+        });
+      }
+    } catch (e) {
+      console.error('Update contact failed:', e);
+    }
+  }, [contacts, selectedContact]);
 
   const reactToMessage = useCallback(async (messageId, emoji) => {
     // 1. Update reaction locally in state and storage immediately
@@ -667,25 +968,20 @@ export const ChatProvider = ({ children }) => {
     } catch (e) { console.error('Forward failed:', e); }
   }, []);
 
-  const updateContactAttribute = useCallback(async (contactId, attribute, value) => {
-    setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, [attribute]: value } : c)));
-    try {
-      await apiFetch(`/api/contacts/${contactId}/${attribute}`, {
-        method: 'PUT',
-        body: JSON.stringify({ [attribute]: value }),
-      });
-    } catch (e) {
-      console.error(`Failed to update ${attribute}:`, e);
-      setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, [attribute]: !value } : c)));
-    }
-  }, []);
-
   const refreshContacts = useCallback(async () => {
     try {
       const data = await apiFetch('/api/contacts');
+      const pinnedChats = new Set(JSON.parse(localStorage.getItem('setu_pinned_chat_ids') || '[]'));
+      const favChats = new Set(JSON.parse(localStorage.getItem('setu_favorite_chat_ids') || '[]'));
+
       setContacts((prev) => {
         const groups = prev.filter((c) => c.isGroup);
-        return [...(data || []), ...groups];
+        const merged = [...(data || []), ...groups].map((c) => {
+          const isPin = pinnedChats.has(String(c.id)) || pinnedChats.has(String(c.username)) || !!c.isPinned;
+          const isFav = favChats.has(String(c.id)) || favChats.has(String(c.username)) || !!c.isFavorite;
+          return { ...c, isPinned: isPin, isFavorite: isFav };
+        });
+        return merged;
       });
     } catch (e) { console.error('Failed to refresh contacts:', e); }
   }, []);

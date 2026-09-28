@@ -12,6 +12,7 @@ import ChatWindow from './components/ChatWindow/ChatWindow';
 
 import ProfileModal from './components/modals/ProfileModal';
 import GroupModal from './components/modals/GroupModal';
+import GroupInfoModal from './components/modals/GroupInfoModal';
 import ScheduledModal from './components/modals/ScheduledModal';
 import StarredModal from './components/modals/StarredModal';
 import VanishModeModal from './components/modals/VanishModeModal';
@@ -155,6 +156,7 @@ const MainContent = () => {
       {/* Dynamic Modals */}
       {modals?.profile && <ProfileModal />}
       {modals?.group && <GroupModal />}
+      {modals?.groupInfo && <GroupInfoModal />}
       {modals?.scheduled && <ScheduledModal />}
       {modals?.starred && <StarredModal />}
       {modals?.vanish && <VanishModeModal />}

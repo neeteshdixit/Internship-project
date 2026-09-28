@@ -27,6 +27,11 @@ public class Status {
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "status_views", joinColumns = @JoinColumn(name = "status_id"))
+    @Column(name = "viewer_username")
+    private java.util.Set<String> viewers = new java.util.HashSet<>();
+
     public Status() {}
 
     public Status(User user, String mediaUrl, String caption, String type, String textBackground, LocalDateTime expiresAt) {
@@ -56,4 +61,6 @@ public class Status {
     public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public java.util.Set<String> getViewers() { return viewers; }
+    public void setViewers(java.util.Set<String> viewers) { this.viewers = viewers; }
 }

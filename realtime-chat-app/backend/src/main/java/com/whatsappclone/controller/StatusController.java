@@ -37,9 +37,18 @@ public class StatusController {
         }
 
         String mediaUrl = request.get("mediaUrl");
+        if (mediaUrl == null || mediaUrl.isEmpty()) {
+            mediaUrl = request.get("content");
+        }
         String caption = request.get("caption");
-        String type = request.getOrDefault("type", "text"); // "text" | "image" | "video"
+        if (caption == null || caption.isEmpty()) {
+            caption = request.get("content");
+        }
+        String type = request.getOrDefault("type", "text").toLowerCase();
         String textBackground = request.get("textBackground");
+        if (textBackground == null || textBackground.isEmpty()) {
+            textBackground = request.get("backgroundColor");
+        }
 
         LocalDateTime expiresAt = LocalDateTime.now().plusHours(24);
 
@@ -88,6 +97,8 @@ public class StatusController {
             update.put("type", s.getType());
             update.put("textBackground", s.getTextBackground());
             update.put("createdAt", s.getCreatedAt().format(formatter));
+            update.put("viewers", s.getViewers());
+            update.put("viewsCount", s.getViewers().size());
 
             grouped.computeIfAbsent(username, k -> new ArrayList<>()).add(update);
         }
@@ -102,5 +113,69 @@ public class StatusController {
         }
 
         return ResponseEntity.ok(responseList);
+    }
+
+    // Get only current user's active statuses
+    @GetMapping("/mine")
+    public ResponseEntity<?> getMyStatuses(Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        User me = userRepository.findByUsernameIgnoreCase(principal.getName()).orElse(null);
+        if (me == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Status> myStatuses = statusRepository.findByUserAndExpiresAtAfterOrderByCreatedAtAsc(me, now);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Status s : myStatuses) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", s.getId());
+            item.put("mediaUrl", s.getMediaUrl());
+            item.put("caption", s.getCaption());
+            item.put("type", s.getType());
+            item.put("textBackground", s.getTextBackground());
+            item.put("createdAt", s.getCreatedAt().format(formatter));
+            item.put("viewers", s.getViewers());
+            item.put("viewsCount", s.getViewers().size());
+            list.add(item);
+        }
+
+        return ResponseEntity.ok(list);
+    }
+
+    // Record a view on a status
+    @PostMapping("/{id}/view")
+    public ResponseEntity<?> recordView(@PathVariable Long id, Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        Status status = statusRepository.findById(id).orElse(null);
+        if (status == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Status not found"));
+        }
+        status.getViewers().add(principal.getName());
+        statusRepository.save(status);
+        return ResponseEntity.ok(Map.of("message", "View recorded", "viewsCount", status.getViewers().size()));
+    }
+
+    // Delete a status
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteStatus(@PathVariable Long id, Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        Status status = statusRepository.findById(id).orElse(null);
+        if (status == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Status not found"));
+        }
+        if (!status.getUser().getUsername().equalsIgnoreCase(principal.getName())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+        }
+        statusRepository.delete(status);
+        return ResponseEntity.ok(Map.of("message", "Status deleted successfully", "id", id));
     }
 }

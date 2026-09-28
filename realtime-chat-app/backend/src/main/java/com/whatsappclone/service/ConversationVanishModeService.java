@@ -23,7 +23,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ConversationVanishModeService {
 
-    private static final int VANISH_DURATION_SECONDS = 30;
+    private static final int VANISH_DURATION_SECONDS = 20;
 
     private final ConversationVanishModeRepository vanishModeRepository;
     private final UserRepository userRepository;
@@ -89,6 +89,7 @@ public class ConversationVanishModeService {
         }
         if (peerUsername != null) {
             response.put("peerUsername", peerUsername);
+            response.put("targetPeer", peerUsername);
         }
         if (actorUsername != null) {
             response.put("actorUsername", actorUsername);
@@ -108,22 +109,7 @@ public class ConversationVanishModeService {
     }
 
     private void validateTogglePermission(ConversationVanishMode state, String currentUsername, boolean enabling) {
-        if (!state.isEnabled()) {
-            return;
-        }
-
-        String owner = normalize(state.getEnabledByUsername());
-        String actor = normalize(currentUsername);
-        if (owner.isEmpty()) {
-            return;
-        }
-
-        if (!owner.equals(actor)) {
-            if (enabling) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Vanish mode is already enabled by " + state.getEnabledByUsername());
-            }
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only " + state.getEnabledByUsername() + " can turn off vanish mode");
-        }
+        // Both participants in a direct chat can enable or disable vanish mode
     }
 
     private ChatGroup getAuthorizedGroup(String currentUsername, Long groupId) {
@@ -145,12 +131,18 @@ public class ConversationVanishModeService {
     }
 
     private void broadcastDirectState(ConversationVanishMode state, String currentUsername, String peerUsername) {
-        Map<String, Object> payload = new HashMap<>(toResponseMap(state, null, peerUsername, currentUsername));
-        payload.put("type", "VANISH_MODE_UPDATED");
+        // 1. Send to the user who performed the action (their peer is peerUsername)
+        Map<String, Object> payloadForCurrent = new HashMap<>(toResponseMap(state, null, peerUsername, currentUsername));
+        payloadForCurrent.put("type", "VANISH_MODE_UPDATED");
+        payloadForCurrent.put("targetPeer", peerUsername);
+        messagingTemplate.convertAndSend("/topic/messages/" + currentUsername, payloadForCurrent);
 
-        messagingTemplate.convertAndSend("/topic/messages/" + currentUsername, payload);
+        // 2. Send to the other participant (their peer is currentUsername)
         if (peerUsername != null && !peerUsername.equalsIgnoreCase(currentUsername)) {
-            messagingTemplate.convertAndSend("/topic/messages/" + peerUsername, payload);
+            Map<String, Object> payloadForPeer = new HashMap<>(toResponseMap(state, null, currentUsername, currentUsername));
+            payloadForPeer.put("type", "VANISH_MODE_UPDATED");
+            payloadForPeer.put("targetPeer", currentUsername);
+            messagingTemplate.convertAndSend("/topic/messages/" + peerUsername, payloadForPeer);
         }
     }
 

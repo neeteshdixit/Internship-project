@@ -91,6 +91,9 @@ export default function AuthForm({
               onChange={(e) => setPhoneInput(e.target.value)}
               style={inputStyle}
             />
+            <p style={{ fontSize: '11px', color: '#8696a0', marginTop: '4px', marginBottom: 0 }}>
+              ℹ️ Ek mobile number sirf ek account ke liye use ho sakta hai.
+            </p>
           </div>
         </>
       ) : (

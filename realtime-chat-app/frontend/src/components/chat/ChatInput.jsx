@@ -1,6 +1,7 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, Smile, Mic, X, MapPin, Image, FileText, Clock, Trash2, Sticker } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Send, Paperclip, Smile, Mic, X, MapPin, Image, FileText, Clock, Trash2, Sticker, BarChart2 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
+import CreatePollModal from './CreatePollModal';
 
 const EMOJI_LIST = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','💩','👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾','👋','🤚','🖐','✋','👌','✌️','🤞','🤙','👍','👎','✊','👊','👏','🙌','🙏','💪','❤️','🧡','💛','💚','💙','💜','🖤','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','✨','⭐','🎉','🎊','🎈','🎁','🏆','🥇','🎯','💯','🆕','🆒','🆓'];
 
@@ -161,6 +162,7 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
 
   const [scheduleTime, setScheduleTime] = useState('');
   const [showScheduleInput, setShowScheduleInput] = useState(false);
+  const [showPollModal, setShowPollModal] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -170,6 +172,7 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
 
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const isViewOnceNextRef = useRef(false);
 
   // Restore Draft
   useEffect(() => {
@@ -234,11 +237,20 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
     if (!file) return;
     setIsUploading(true);
     setShowAttach(false);
+    const isVO = isViewOnceNextRef.current;
+    isViewOnceNextRef.current = false;
     try {
       const res = await uploadFile(file);
       const isImg = file.type.startsWith('image/');
       const isVid = file.type.startsWith('video/');
-      setPendingFile({ mediaUrl: res.mediaUrl, mediaType: isImg ? 'IMAGE' : isVid ? 'VIDEO' : 'DOCUMENT', fileName: res.fileName || file.name, fileSize: res.fileSize || file.size, isViewOnce: false, previewUrl: (isImg || isVid) ? URL.createObjectURL(file) : null });
+      setPendingFile({
+        mediaUrl: res.mediaUrl,
+        mediaType: isImg ? 'IMAGE' : isVid ? 'VIDEO' : 'DOCUMENT',
+        fileName: res.fileName || file.name,
+        fileSize: res.fileSize || file.size,
+        isViewOnce: (isImg || isVid) && isVO,
+        previewUrl: (isImg || isVid) ? URL.createObjectURL(file) : null
+      });
     } catch (err) {
       alert('Upload failed: ' + err.message);
     } finally {
@@ -363,10 +375,43 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {(pendingFile.mediaType === 'IMAGE' || pendingFile.mediaType === 'VIDEO') && (
-              <button type="button" onClick={() => setPendingFile(p => ({ ...p, isViewOnce: !p.isViewOnce }))}
-                title={pendingFile.isViewOnce ? 'View Once ON' : 'Send as View Once'}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: pendingFile.isViewOnce ? '#00a884' : '#2a3942', border: pendingFile.isViewOnce ? '2px solid #00a884' : '2px dashed #8696a0', color: pendingFile.isViewOnce ? '#fff' : '#8696a0', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                ①
+              <button
+                type="button"
+                onClick={() => setPendingFile(p => ({ ...p, isViewOnce: !p?.isViewOnce }))}
+                title={pendingFile.isViewOnce ? 'View Once Active - Single view & screenshot restricted' : 'Click to send as View Once'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  backgroundColor: pendingFile.isViewOnce ? 'rgba(0,168,132,0.18)' : '#2a3942',
+                  border: pendingFile.isViewOnce ? '2px solid #00a884' : '1px dashed #8696a0',
+                  color: pendingFile.isViewOnce ? '#00a884' : '#8696a0',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    backgroundColor: pendingFile.isViewOnce ? '#00a884' : 'transparent',
+                    color: pendingFile.isViewOnce ? '#fff' : '#8696a0',
+                    border: pendingFile.isViewOnce ? 'none' : '1.5px solid #8696a0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                  }}
+                >
+                  ①
+                </span>
+                <span>{pendingFile.isViewOnce ? 'View Once: ON' : 'Set to View Once'}</span>
               </button>
             )}
             <button type="button" onClick={() => setPendingFile(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><X size={18} /></button>
@@ -421,11 +466,39 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
 
       {/* Attach Menu */}
       {showAttach && (
-        <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, width: 'min(200px, calc(100vw - 56px))' }}>
-          <button type="button" onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}>
+        <div style={{ position: 'absolute', bottom: '65px', left: '46px', backgroundColor: '#202c33', borderRadius: '12px', border: '1px solid #2a3942', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10, width: 'min(220px, calc(100vw - 56px))' }}>
+          <button
+            type="button"
+            onClick={() => {
+              isViewOnceNextRef.current = false;
+              setShowAttach(false);
+              fileInputRef.current?.click();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}
+          >
             <Image size={17} color="#00a884" /> Photos & Videos
           </button>
-          <button type="button" onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              isViewOnceNextRef.current = true;
+              setShowAttach(false);
+              fileInputRef.current?.click();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(0,168,132,0.12)', border: '1px solid rgba(0,168,132,0.3)', color: '#00a884', fontSize: '13px', fontWeight: 600, cursor: 'pointer', borderRadius: '6px' }}
+          >
+            <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#00a884', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800 }}>①</div>
+            View Once Photo (Single View)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              isViewOnceNextRef.current = false;
+              setShowAttach(false);
+              fileInputRef.current?.click();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}
+          >
             <FileText size={17} color="#53bdeb" /> Document / File
           </button>
           <button type="button" onClick={handleShareLocation} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}>
@@ -433,6 +506,16 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
           </button>
           <button type="button" onClick={() => { setShowScheduleInput(true); setShowAttach(false); }} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}>
             <Clock size={17} color="#f59e0b" /> Schedule Message
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowPollModal(true);
+              setShowAttach(false);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'transparent', border: 'none', color: '#e9edef', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' }}
+          >
+            <BarChart2 size={17} color="#f59e0b" /> Poll
           </button>
         </div>
       )}
@@ -489,6 +572,15 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
           )}
         </form>
       )}
+
+      {/* Create Poll Modal */}
+      <CreatePollModal
+        isOpen={showPollModal}
+        onClose={() => setShowPollModal(false)}
+        onCreatePoll={(pollData) => {
+          onSendMessage(JSON.stringify(pollData), { messageType: 'POLL' });
+        }}
+      />
     </div>
   );
 }

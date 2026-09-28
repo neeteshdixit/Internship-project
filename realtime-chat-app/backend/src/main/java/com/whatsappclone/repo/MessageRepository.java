@@ -39,11 +39,17 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     @Query(value = "SELECT * FROM messages WHERE group_id = :groupId ORDER BY timestamp DESC LIMIT 1", nativeQuery = true)
     Message findLastGroupMessage(@Param("groupId") Long groupId);
 
-    // Ephemeral Self-Destruct Purge Query
+    // Ephemeral Self-Destruct Purge Query (Never delete pinned messages)
+    @Query("SELECT m FROM Message m WHERE m.expiresAt IS NOT NULL AND m.expiresAt <= :now AND m.isPinned = false")
+    List<Message> findExpiredUnpinnedMessages(@Param("now") LocalDateTime now);
+
     List<Message> findByExpiresAtLessThanEqual(LocalDateTime now);
 
     @Query("SELECT m FROM Message m WHERE m.sender = :user OR m.receiver = :user")
     List<Message> findMessagesInvolvingUser(@Param("user") User user);
+
+    @Query("SELECT m FROM Message m WHERE m.isStarred = true AND (m.sender.username = :username OR (m.receiver IS NOT NULL AND m.receiver.username = :username)) ORDER BY m.timestamp DESC")
+    List<Message> findStarredMessagesForUser(@Param("username") String username);
 
     // Emergency Panic Wipe Queries
     @Modifying

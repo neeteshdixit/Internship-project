@@ -76,13 +76,27 @@ public class MessageController {
             response.setGroupId(savedMessage.getGroup().getId());
             response.setGroupName(savedMessage.getGroup().getName());
 
-            // Broadcast to all group members
-            for (com.whatsappclone.model.User member : savedMessage.getGroup().getMembers()) {
-                messagingTemplate.convertAndSend(
-                        "/topic/messages/" + member.getUsername(), 
-                        response
-                );
+            // Broadcast to all group members (both exact and lowercase username topics)
+            if (savedMessage.getGroup().getMembers() != null) {
+                for (com.whatsappclone.model.User member : savedMessage.getGroup().getMembers()) {
+                    messagingTemplate.convertAndSend(
+                            "/topic/messages/" + member.getUsername(), 
+                            response
+                    );
+                    if (!member.getUsername().equalsIgnoreCase(member.getUsername())) {
+                        messagingTemplate.convertAndSend(
+                                "/topic/messages/" + member.getUsername().toLowerCase(), 
+                                response
+                        );
+                    }
+                }
             }
+
+            // Also broadcast directly to group topic channel
+            messagingTemplate.convertAndSend(
+                    "/topic/group/" + savedMessage.getGroup().getId(),
+                    response
+            );
         } else {
             // Broadcast to receiver's topic channel
             if (messageDto.getReceiverUsername() != null) {
@@ -98,6 +112,44 @@ public class MessageController {
                     response
             );
         }
+    }
+
+    @GetMapping("/api/messages/group/{groupId}")
+    public ResponseEntity<List<MessageResponseDto>> getGroupMessagesDirect(@PathVariable Long groupId) {
+        List<Message> messages = messageService.getGroupChatHistory(groupId);
+        List<MessageResponseDto> dtos = messages.stream().map(msg -> MessageResponseDto.builder()
+                .id(msg.getId())
+                .senderUsername(msg.getSender().getUsername())
+                .receiverUsername(null)
+                .content(msg.getContent())
+                .timestamp(msg.getTimestamp())
+                .status(msg.getStatus())
+                .parentMessageId(msg.getParentMessageId())
+                .parentMessageText(msg.getParentMessageText())
+                .parentMessageSender(msg.getParentMessageSender())
+                .isForwarded(msg.isForwarded())
+                .isStarred(msg.isStarred())
+                .isPinned(msg.isPinned())
+                .reactions(msg.getReactions())
+                .isMedia(msg.isMedia())
+                .mediaUrl(msg.getMediaUrl())
+                .mediaType(msg.getMediaType())
+                .fileName(msg.getFileName())
+                .fileSize(msg.getFileSize())
+                .messageType(msg.getMessageType())
+                .groupId(groupId)
+                .groupName(msg.getGroup() != null ? msg.getGroup().getName() : null)
+                .iv(msg.getIv())
+                .selfDestructSeconds(msg.getSelfDestructSeconds())
+                .expiresAt(msg.getExpiresAt())
+                .readAt(msg.getReadAt())
+                .isPriority(msg.isPriority())
+                .latitude(msg.getLatitude())
+                .longitude(msg.getLongitude())
+                .build()
+        ).collect(Collectors.toList());
+
+        return ResponseEntity.ok(dtos);
     }
 
     // 2. WebSocket Handler: Tracks user online status when they connect
@@ -269,62 +321,91 @@ public class MessageController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Message not found"));
         }
         
-        String currentUsername = principal.getName();
-        if (!msg.getSender().getUsername().equals(currentUsername) && !msg.getReceiver().getUsername().equals(currentUsername)) {
+        String currentUsername = principal != null ? principal.getName() : "";
+        boolean isSender = msg.getSender() != null && msg.getSender().getUsername().equalsIgnoreCase(currentUsername);
+        boolean isReceiver = msg.getReceiver() != null && msg.getReceiver().getUsername().equalsIgnoreCase(currentUsername);
+        if (!isSender && !isReceiver) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Unauthorized"));
         }
-        
-        // check time limit for "Delete For Everyone" (say 15 minutes)
-        if (msg.getSender().getUsername().equals(currentUsername)) {
-            java.time.LocalDateTime now = java.time.LocalDateTime.now();
-            if (msg.getTimestamp().plusMinutes(15).isBefore(now)) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Delete limit exceeded (max 15 mins)"));
-            }
-        }
 
+        // Delete permanently from DB
         messageService.deleteMessageById(id);
         
+        // Broadcast delete notification via WebSocket
         MessageResponseDto deleteNotification = MessageResponseDto.builder()
                 .id(id)
-                .senderUsername(msg.getSender().getUsername())
-                .receiverUsername(msg.getReceiver().getUsername())
+                .senderUsername(msg.getSender() != null ? msg.getSender().getUsername() : null)
+                .receiverUsername(msg.getReceiver() != null ? msg.getReceiver().getUsername() : null)
                 .content("DELETED")
+                .messageType("MESSAGE_DELETED")
                 .build();
                 
-        messagingTemplate.convertAndSend("/topic/messages/" + msg.getReceiver().getUsername(), deleteNotification);
-        messagingTemplate.convertAndSend("/topic/messages/" + msg.getSender().getUsername(), deleteNotification);
+        if (msg.getReceiver() != null) {
+            messagingTemplate.convertAndSend("/topic/messages/" + msg.getReceiver().getUsername(), deleteNotification);
+        }
+        if (msg.getSender() != null) {
+            messagingTemplate.convertAndSend("/topic/messages/" + msg.getSender().getUsername(), deleteNotification);
+        }
+        if (msg.getGroup() != null) {
+            messagingTemplate.convertAndSend("/topic/group/" + msg.getGroup().getId(), deleteNotification);
+        }
         
         return ResponseEntity.ok(Map.of("message", "Message deleted successfully", "id", id));
     }
 
-    // Toggle star status on message
-    @PostMapping("/api/messages/star/{id}")
-    public ResponseEntity<?> toggleStarMessage(@PathVariable Long id, Principal principal) {
+    // Get all starred messages for a user
+    @GetMapping("/api/messages/starred/{username}")
+    public ResponseEntity<?> getStarredMessages(@PathVariable String username, Principal principal) {
+        if (principal == null || !principal.getName().equalsIgnoreCase(username)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Unauthorized"));
+        }
+        return ResponseEntity.ok(messageService.getStarredMessages(username));
+    }
+
+    // Toggle star status on message (supports POST & PUT, /star/{id} and /{id}/star)
+    @RequestMapping(value = {"/api/messages/star/{id}", "/api/messages/{id}/star"}, method = {RequestMethod.POST, RequestMethod.PUT})
+    public ResponseEntity<?> toggleStarMessage(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body, Principal principal) {
         Message msg = messageService.getMessageById(id);
         if (msg == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Message not found"));
         }
-        String currentUsername = principal.getName();
-        if (!msg.getSender().getUsername().equals(currentUsername) && !msg.getReceiver().getUsername().equals(currentUsername)) {
+        String currentUsername = principal != null ? principal.getName() : "";
+        boolean isSender = msg.getSender() != null && msg.getSender().getUsername().equalsIgnoreCase(currentUsername);
+        boolean isReceiver = msg.getReceiver() != null && msg.getReceiver().getUsername().equalsIgnoreCase(currentUsername);
+        if (!isSender && !isReceiver) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Unauthorized"));
         }
-        msg.setStarred(!msg.isStarred());
+        if (body != null && body.containsKey("starred")) {
+            msg.setStarred(Boolean.TRUE.equals(body.get("starred")));
+        } else {
+            msg.setStarred(!msg.isStarred());
+        }
         Message saved = messageService.saveMessageObj(msg);
         return ResponseEntity.ok(Map.of("id", saved.getId(), "isStarred", saved.isStarred()));
     }
 
-    // Toggle pin status on message
-    @PostMapping("/api/messages/pin/{id}")
-    public ResponseEntity<?> togglePinMessage(@PathVariable Long id, Principal principal) {
+    // Toggle pin status on message (supports POST & PUT, /pin/{id} and /{id}/pin)
+    @RequestMapping(value = {"/api/messages/pin/{id}", "/api/messages/{id}/pin"}, method = {RequestMethod.POST, RequestMethod.PUT})
+    public ResponseEntity<?> togglePinMessage(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body, Principal principal) {
         Message msg = messageService.getMessageById(id);
         if (msg == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Message not found"));
         }
-        String currentUsername = principal.getName();
-        if (!msg.getSender().getUsername().equals(currentUsername) && !msg.getReceiver().getUsername().equals(currentUsername)) {
+        String currentUsername = principal != null ? principal.getName() : "";
+        boolean isSender = msg.getSender() != null && msg.getSender().getUsername().equalsIgnoreCase(currentUsername);
+        boolean isReceiver = msg.getReceiver() != null && msg.getReceiver().getUsername().equalsIgnoreCase(currentUsername);
+        if (!isSender && !isReceiver) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Unauthorized"));
         }
-        msg.setPinned(!msg.isPinned());
+        if (body != null && body.containsKey("pinned")) {
+            msg.setPinned(Boolean.TRUE.equals(body.get("pinned")));
+        } else {
+            msg.setPinned(!msg.isPinned());
+        }
+        if (msg.isPinned()) {
+            msg.setExpiresAt(null);
+            msg.setSelfDestructSeconds(null);
+        }
         Message saved = messageService.saveMessageObj(msg);
         return ResponseEntity.ok(Map.of("id", saved.getId(), "isPinned", saved.isPinned()));
     }
@@ -390,6 +471,44 @@ public class MessageController {
         messagingTemplate.convertAndSend("/topic/messages/" + saved.getSender().getUsername(), notification);
 
         return ResponseEntity.ok(Map.of("id", saved.getId(), "reactions", saved.getReactions() != null ? saved.getReactions() : ""));
+    }
+
+    // Vote on a poll message
+    @PostMapping("/api/messages/poll-vote/{id}")
+    public ResponseEntity<?> voteOnPoll(@PathVariable Long id, @RequestBody Map<String, Object> body, Principal principal) {
+        Message msg = messageService.getMessageById(id);
+        if (msg == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Message not found"));
+        }
+        
+        String pollContent = (String) body.get("pollContent");
+        if (pollContent != null && !pollContent.isEmpty()) {
+            msg.setContent(pollContent);
+            Message saved = messageService.saveMessageObj(msg);
+            
+            MessageResponseDto notification = MessageResponseDto.builder()
+                    .id(saved.getId())
+                    .senderUsername(saved.getSender().getUsername())
+                    .receiverUsername(saved.getReceiver() != null ? saved.getReceiver().getUsername() : null)
+                    .groupId(saved.getGroup() != null ? saved.getGroup().getId() : null)
+                    .content(saved.getContent())
+                    .timestamp(saved.getTimestamp())
+                    .status(saved.getStatus())
+                    .messageType(saved.getMessageType())
+                    .reactions(saved.getReactions())
+                    .isStarred(saved.isStarred())
+                    .isPinned(saved.isPinned())
+                    .build();
+
+            if (saved.getGroup() != null) {
+                messagingTemplate.convertAndSend("/topic/group/" + saved.getGroup().getId(), notification);
+            } else if (saved.getReceiver() != null) {
+                messagingTemplate.convertAndSend("/topic/messages/" + saved.getReceiver().getUsername(), notification);
+                messagingTemplate.convertAndSend("/topic/messages/" + saved.getSender().getUsername(), notification);
+            }
+        }
+        
+        return ResponseEntity.ok(Map.of("id", msg.getId(), "content", msg.getContent()));
     }
 
     @DeleteMapping("/api/messages/panic-wipe")

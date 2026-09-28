@@ -57,7 +57,7 @@ export async function getOrCreateChatKey(chatIdentifier) {
         const encoder = new TextEncoder();
         const keyMaterial = await window.crypto.subtle.digest(
             "SHA-256",
-            encoder.encode(`tactical_field_salt_${chatIdentifier}`)
+            encoder.encode(`tactical_field_salt_${primaryChatIdentifier}`)
         );
         const importedKey = await window.crypto.subtle.importKey(
             "raw",
@@ -112,12 +112,25 @@ export async function encryptPayload(plainText, chatIdentifier) {
 export async function decryptPayload(ciphertext, ivBase64, chatIdentifier) {
     if (!ciphertext || !ivBase64) return ciphertext;
     try {
-        const candidates = Array.isArray(chatIdentifier) ? chatIdentifier : [chatIdentifier];
+        const rawCandidates = Array.isArray(chatIdentifier) ? chatIdentifier : [chatIdentifier];
+        const candidates = [];
+        for (const c of rawCandidates) {
+            if (!c) continue;
+            candidates.push(c);
+            if (typeof c === 'string') {
+                if (c.startsWith('group:')) {
+                    candidates.push(c.replace('group:', ''));
+                } else if (!c.startsWith('direct:')) {
+                    candidates.push(`group:${c}`);
+                }
+            }
+        }
+        const uniqueCandidates = [...new Set(candidates)];
         const encryptedBuffer = base64ToBuffer(ciphertext);
         const iv = new Uint8Array(base64ToBuffer(ivBase64));
         const decoder = new TextDecoder();
 
-        for (const candidate of candidates) {
+        for (const candidate of uniqueCandidates) {
             if (candidate === undefined || candidate === '') continue;
 
             try {

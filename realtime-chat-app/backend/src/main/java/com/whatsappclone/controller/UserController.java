@@ -243,7 +243,11 @@ public ResponseEntity<?> deleteCurrentUser(Principal principal) {
             user.setEmail(request.email());
         }
         if (request.phoneNumber() != null && !request.phoneNumber().isBlank()) {
-            user.setPhoneNumber(request.phoneNumber());
+            String cleanPhone = request.phoneNumber().trim();
+            if (!cleanPhone.equalsIgnoreCase(user.getPhoneNumber()) && userRepository.existsByPhoneNumber(cleanPhone)) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "This mobile number is already in use by another account"));
+            }
+            user.setPhoneNumber(cleanPhone);
         }
         if (request.profilePicUrl() != null) {
             user.setProfilePicUrl(request.profilePicUrl());

@@ -36,8 +36,8 @@ public class User implements UserDetails {
     @Column(unique = true, nullable = false)
     private String email;
 
-    // Phone number unique nahi hai — ek hi number se multiple accounts ban sakte hain
-    @Column
+    // Mobile number is strictly unique — ek mobile number ek hi account ke liye use ho sakta hai
+    @Column(unique = true)
     private String phoneNumber;
 
     @Column(nullable = false)

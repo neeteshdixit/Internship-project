@@ -1,7 +1,8 @@
-﻿import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
-import { Lock, Search, X, ShieldCheck, AlertTriangle, EyeOff } from 'lucide-react';
+import { useUI } from '../../context/UIContext';
+import { Lock, Search, X, Shield, ShieldCheck, AlertTriangle, EyeOff, ShieldAlert, Pin, Users, UserPlus } from 'lucide-react';
 import ChatHeader from '../chat/ChatHeader';
 import MessageList from '../chat/MessageList';
 import ChatInput from '../chat/ChatInput';
@@ -10,7 +11,8 @@ import useIsMobile from '../../hooks/useIsMobile';
 export default function ChatWindow() {
   const isMobile = useIsMobile();
   const { currentUser } = useAuth();
-  const { selectedContact, clearSelectedContact, messages, sendMessage, getChatKey, sendScreenshotAlert, screenshotAlert } = useChat();
+  const { toggleModal } = useUI();
+  const { selectedContact, clearSelectedContact, messages, sendMessage, getChatKey, sendScreenshotAlert, screenshotAlert, pinMessage } = useChat();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [replyMessage, setReplyMessage] = useState(null);
@@ -19,31 +21,132 @@ export default function ChatWindow() {
   const [localScreenshotWarning, setLocalScreenshotWarning] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const lastAlertTimeRef = useRef(0);
 
-  // Anti-Screenshot & Screen Capture Detection
+  // Vanish Mode is active for this conversation?
+  const isVanishActive = !!selectedContact?.vanishMode;
+
+  // Keep `vanish-active` class on <body> so @media print (App.css) hides content
   useEffect(() => {
+    const body = document.body;
+    if (isVanishActive) body.classList.add('vanish-active');
+    else {
+      body.classList.remove('vanish-active');
+      body.classList.remove('window-inactive');
+    }
+    return () => {
+      body.classList.remove('vanish-active');
+      body.classList.remove('window-inactive');
+    };
+  }, [isVanishActive]);
+
+  // Anti-Screenshot & Screen Capture Protection — enforced ONLY when Vanish Mode is ON
+  useEffect(() => {
+    if (!isVanishActive) {
+      setIsBlurred(false);
+      setLocalScreenshotWarning(false);
+      return;
+    }
+
+    const triggerScreenshotBlock = () => {
+      const now = Date.now();
+      // 7-second cooldown: prevent spamming or repeating popups
+      if (now - lastAlertTimeRef.current < 7000) {
+        return;
+      }
+      lastAlertTimeRef.current = now;
+      setIsBlurred(true);
+      setLocalScreenshotWarning(true);
+      if (sendScreenshotAlert) sendScreenshotAlert();
+
+      setTimeout(() => {
+        setLocalScreenshotWarning(false);
+        if (document.hasFocus()) {
+          setIsBlurred(false);
+        }
+      }, 3500);
+    };
+
     const handleKeyDown = (e) => {
-      // Detect PrintScreen or Snipping Tool key combos
+      // Block PrintScreen, Snipping Tool, screen-record & print key combos
       if (
         e.key === 'PrintScreen' ||
-        (e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's')) ||
-        (e.metaKey && e.shiftKey && (e.key === '4' || e.key === '3')) ||
-        (e.ctrlKey && (e.key === 'P' || e.key === 'p'))
+        e.code === 'PrintScreen' ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's' || e.key === 'I' || e.key === 'i')) ||
+        (e.metaKey && e.shiftKey && (e.key === '4' || e.key === '3' || e.key === '5')) ||
+        (e.ctrlKey && (e.key === 'P' || e.key === 'p' || e.key === 'S' || e.key === 's')) ||
+        (e.altKey && (e.key === 'PrintScreen' || e.code === 'PrintScreen'))
       ) {
-        setIsBlurred(true);
-        setLocalScreenshotWarning(true);
-        sendScreenshotAlert();
-
-        setTimeout(() => {
-          setIsBlurred(false);
-          setLocalScreenshotWarning(false);
-        }, 3000);
+        e.preventDefault();
+        e.stopPropagation();
+        triggerScreenshotBlock();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sendScreenshotAlert]);
+    const handleKeyUp = (e) => {
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerScreenshotBlock();
+      }
+    };
+
+    // Right-click / text-copy / long-press save not allowed while vanish mode is active
+    const handleContextMenu = (e) => e.preventDefault();
+    const handleCopy = (e) => e.preventDefault();
+    const handleCut = (e) => e.preventDefault();
+    const handleDragStart = (e) => e.preventDefault();
+
+    // Conceal content silently when window loses focus (e.g. Snipping tool, Alt-Tab)
+    let focusTimer = null;
+    const handleWindowBlur = () => {
+      document.body.classList.add('window-inactive');
+      setIsBlurred(true);
+    };
+    const handleWindowFocus = () => {
+      document.body.classList.remove('window-inactive');
+      clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => {
+        setIsBlurred(false);
+      }, 250);
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        document.body.classList.add('window-inactive');
+        setIsBlurred(true);
+      } else {
+        document.body.classList.remove('window-inactive');
+        clearTimeout(focusTimer);
+        focusTimer = setTimeout(() => {
+          setIsBlurred(false);
+        }, 250);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
+    window.addEventListener('contextmenu', handleContextMenu, true);
+    window.addEventListener('copy', handleCopy, true);
+    window.addEventListener('cut', handleCut, true);
+    window.addEventListener('dragstart', handleDragStart, true);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
+      window.removeEventListener('contextmenu', handleContextMenu, true);
+      window.removeEventListener('copy', handleCopy, true);
+      window.removeEventListener('cut', handleCut, true);
+      window.removeEventListener('dragstart', handleDragStart, true);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isVanishActive, sendScreenshotAlert]);
+
 
   useEffect(() => {
     const handleWpChange = () => setWallpaper(localStorage.getItem('chat_wallpaper') || 'default');
@@ -132,8 +235,8 @@ export default function ChatWindow() {
         backgroundColor: WALLPAPER_BG[wallpaper] || '#0b141a',
         position: 'relative',
         borderLeft: isMobile ? 'none' : '1px solid #222d34',
-        filter: isBlurred ? 'blur(16px)' : 'none',
-        transition: 'filter 0.15s ease',
+        userSelect: isVanishActive ? 'none' : 'auto',
+        WebkitUserSelect: isVanishActive ? 'none' : 'auto',
       }}
     >
       {/* 1. Header */}
@@ -151,11 +254,11 @@ export default function ChatWindow() {
         onBack={isMobile ? clearSelectedContact : null}
       />
 
-      {/* Screenshot Alert Toast Banner (Received from other user or locally detected) */}
+      {/* Screenshot Alert Toast Banner (Triggered only when screenshot hotkey pressed) */}
       {(screenshotAlert || localScreenshotWarning) && (
         <div
           style={{
-            backgroundColor: '#ef4444',
+            backgroundColor: '#dc2626',
             color: '#fff',
             padding: '10px 16px',
             fontSize: '13px',
@@ -164,12 +267,12 @@ export default function ChatWindow() {
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            boxShadow: '0 4px 12px rgba(239,68,68,0.4)',
+            boxShadow: '0 4px 14px rgba(220,38,38,0.5)',
             zIndex: 99,
           }}
         >
           <AlertTriangle size={18} />
-          {screenshotAlert || '⚠️ Screenshot attempt detected and blocked! The other user has been notified.'}
+          {screenshotAlert || '⚠️ Screenshot attempt detected! Screenshots are blocked in Vanish Mode.'}
         </div>
       )}
 
@@ -195,7 +298,203 @@ export default function ChatWindow() {
       )}
 
       {/* 3. Messages List Area */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {/* Subtle Watermark in Vanish Mode */}
+        {isVanishActive && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              zIndex: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              opacity: 0.035,
+              userSelect: 'none',
+              fontSize: '26px',
+              fontWeight: 800,
+              letterSpacing: '5px',
+              transform: 'rotate(-25deg)',
+              color: '#ffffff',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            SETU CONNECT • VANISH MODE • @{currentUser?.username || 'user'}
+          </div>
+        )}
+
+        {/* Strict Screenshot Restriction Veil when window is blurred (Snipping tool active, Win+Shift+S, Alt-Tab) */}
+        {isVanishActive && isBlurred && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: '#0b141a',
+              zIndex: 50,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              color: '#8696a0',
+              userSelect: 'none',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                border: '2px solid #ef4444',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ShieldAlert size={36} color="#ef4444" />
+            </div>
+            <span style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff' }}>
+              SCREENSHOT RESTRICTED
+            </span>
+            <span style={{ fontSize: '13px', color: '#8696a0', maxWidth: '320px', textAlign: 'center', lineHeight: 1.4 }}>
+              Can't capture screen due to security policy. Vanish Mode messages are strictly protected.
+            </span>
+          </div>
+        )}
+
+        {/* WhatsApp-style Pinned Message Banner */}
+        {(() => {
+          const pinnedMsg = Array.isArray(chatMessages) ? chatMessages.find((m) => m.isPinned) : null;
+          if (!pinnedMsg) return null;
+          return (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 16px',
+                backgroundColor: '#1f2c34',
+                borderBottom: '1px solid #2a3942',
+                zIndex: 10,
+                flexShrink: 0,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(0,168,132,0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Pin size={15} color="#00a884" />
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '11px', color: '#00a884', fontWeight: 600 }}>Pinned Message</div>
+                  <div style={{ fontSize: '13px', color: '#e9edef', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {pinnedMsg.viewOnce ? 'Photo (View Once)' : (pinnedMsg.content || pinnedMsg.text || 'Attachment')}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => pinMessage(pinnedMsg.id, false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #2a3942',
+                  borderRadius: '6px',
+                  color: '#8696a0',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#ef4444';
+                  e.currentTarget.style.borderColor = '#ef4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = '#8696a0';
+                  e.currentTarget.style.borderColor = '#2a3942';
+                }}
+                title="Unpin message"
+              >
+                Unpin
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* WhatsApp-style Group Intro Banner & Add Participants Action */}
+        {selectedContact?.isGroup && (
+          <div
+            style={{
+              margin: '14px auto',
+              maxWidth: '420px',
+              backgroundColor: '#182229',
+              borderRadius: '10px',
+              padding: '12px 18px',
+              textAlign: 'center',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+              border: '1px solid rgba(0, 168, 132, 0.25)',
+              zIndex: 2,
+            }}
+          >
+            <div style={{ color: '#00a884', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '4px' }}>
+              <Users size={16} /> {selectedContact?.name || 'Group Chat'}
+            </div>
+            <div style={{ color: '#8696a0', fontSize: '12px', lineHeight: 1.4 }}>
+              Messages in this group are end-to-end encrypted. Tap below to view participants or add new members.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={() => toggleModal('groupInfo', true)}
+                style={{
+                  backgroundColor: '#00a884',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: '18px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(0,168,132,0.3)',
+                }}
+              >
+                <UserPlus size={14} /> Add Members
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleModal('groupInfo', true)}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: '#8696a0',
+                  border: '1px solid #2a3942',
+                  padding: '6px 12px',
+                  borderRadius: '18px',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Group Info
+              </button>
+            </div>
+          </div>
+        )}
+
         <MessageList
           messages={chatMessages}
           currentUser={currentUser}

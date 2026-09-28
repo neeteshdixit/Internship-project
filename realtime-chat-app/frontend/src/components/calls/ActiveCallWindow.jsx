@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, User } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, User, Monitor, MonitorOff } from 'lucide-react';
 import { useCall } from '../../context/CallContext';
 
 export default function ActiveCallWindow() {
@@ -16,9 +16,47 @@ export default function ActiveCallWindow() {
     remoteStream,
   } = useCall();
 
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const screenStreamRef = useRef(null);
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
+
+  const toggleScreenShare = async () => {
+    if (!isScreenSharing) {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        screenStreamRef.current = screenStream;
+        const screenTrack = screenStream.getVideoTracks()[0];
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = screenStream;
+        }
+
+        screenTrack.onended = () => {
+          stopScreenShare();
+        };
+
+        setIsScreenSharing(true);
+      } catch (err) {
+        console.error('Screen sharing error:', err);
+      }
+    } else {
+      stopScreenShare();
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+    }
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+    setIsScreenSharing(false);
+  };
 
   // Attach local video stream
   useEffect(() => {
@@ -81,7 +119,7 @@ export default function ActiveCallWindow() {
       >
         <div>
           <h3 style={{ color: '#e9edef', fontSize: '18px', margin: '0 0 2px 0', fontWeight: 600 }}>
-            @{activeCall.otherUser}
+            {activeCall.groupName ? `👥 ${activeCall.groupName} (@${activeCall.otherUser})` : `@${activeCall.otherUser}`}
           </h3>
           <span
             style={{
@@ -272,25 +310,48 @@ export default function ActiveCallWindow() {
 
         {/* Toggle Camera (If video call) */}
         {isVideo && (
-          <button
-            onClick={toggleCamera}
-            style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '50%',
-              backgroundColor: isCameraOff ? '#ef4444' : '#2a3942',
-              border: 'none',
-              color: '#fff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.2s',
-            }}
-            title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
-          >
-            {isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
-          </button>
+          <>
+            <button
+              onClick={toggleCamera}
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                backgroundColor: isCameraOff ? '#ef4444' : '#2a3942',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+              }}
+              title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
+            >
+              {isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
+            </button>
+
+            {/* Screen Share Button */}
+            <button
+              onClick={toggleScreenShare}
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                backgroundColor: isScreenSharing ? '#00a884' : '#2a3942',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+              }}
+              title={isScreenSharing ? 'Stop sharing screen' : 'Share your screen'}
+            >
+              {isScreenSharing ? <MonitorOff size={22} /> : <Monitor size={22} />}
+            </button>
+          </>
         )}
 
         {/* End Call Button */}

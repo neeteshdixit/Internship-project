@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, Users, Plus, Trash2, Check } from 'lucide-react';
 import { useUI } from '../../context/UIContext';
 import { useChat } from '../../context/ChatContext';
@@ -35,11 +35,17 @@ export default function GroupModal() {
     setIsLoading(true);
 
     try {
+      const memberIdentifiers = selectedUserIds.map((uid) => {
+        const u = availableUsers.find((c) => (c.id === uid || c.contactUserId === uid));
+        return u?.username || uid;
+      });
+
       const response = await apiFetch('/api/groups', {
         method: 'POST',
         body: JSON.stringify({
-          name: groupName,
-          description: description,
+          name: groupName.trim(),
+          description: description.trim(),
+          members: memberIdentifiers,
           memberIds: selectedUserIds,
         }),
       });

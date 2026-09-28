@@ -29,7 +29,10 @@ public class ChatGroupController {
         String name = (String) request.get("name");
         String avatar = (String) request.get("avatar");
         @SuppressWarnings("unchecked")
-        List<String> members = (List<String>) request.get("members");
+        List<?> members = (List<?>) request.get("members");
+        if (members == null) {
+            members = (List<?>) request.get("memberIds");
+        }
 
         if (name == null || name.trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Group name is required"));
@@ -37,6 +40,67 @@ public class ChatGroupController {
 
         ChatGroup group = chatGroupService.createGroup(name, avatar, principal.getName(), members);
         return ResponseEntity.ok(group);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getGroupDetails(@PathVariable Long id, Principal principal) {
+        try {
+            Map<String, Object> details = chatGroupService.getGroupDetails(id, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{id}/members")
+    public ResponseEntity<?> getGroupMembers(@PathVariable Long id, Principal principal) {
+        try {
+            Map<String, Object> details = chatGroupService.getGroupDetails(id, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/members")
+    public ResponseEntity<?> addMembers(@PathVariable Long id, @RequestBody Map<String, Object> request, Principal principal) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<?> members = (List<?>) request.get("members");
+            if (members == null) {
+                members = (List<?>) request.get("memberIds");
+            }
+            if (members == null && request.get("username") != null) {
+                members = List.of(request.get("username"));
+            }
+            if (members == null || members.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No members provided"));
+            }
+            Map<String, Object> details = chatGroupService.addMembers(id, members, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{id}/members/{identifier}")
+    public ResponseEntity<?> removeMember(@PathVariable Long id, @PathVariable String identifier, Principal principal) {
+        try {
+            Map<String, Object> details = chatGroupService.removeMember(id, identifier, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/leave")
+    public ResponseEntity<?> leaveGroup(@PathVariable Long id, Principal principal) {
+        try {
+            chatGroupService.leaveGroup(id, principal.getName());
+            return ResponseEntity.ok(Map.of("success", true, "message", "Left group successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping
@@ -75,6 +139,12 @@ public class ChatGroupController {
                 .fileSize(msg.getFileSize())
                 .messageType(msg.getMessageType())
                 .groupId(id)
+                .groupName(msg.getGroup() != null ? msg.getGroup().getName() : null)
+                .iv(msg.getIv())
+                .selfDestructSeconds(msg.getSelfDestructSeconds())
+                .expiresAt(msg.getExpiresAt())
+                .readAt(msg.getReadAt())
+                .isPriority(msg.isPriority())
                 .build()
         ).collect(Collectors.toList());
 

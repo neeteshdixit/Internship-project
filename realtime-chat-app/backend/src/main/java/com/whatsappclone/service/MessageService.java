@@ -115,7 +115,7 @@ public class MessageService {
                 : buildDirectConversationKey(senderUsername, receiverUsername);
         return conversationVanishModeRepository.findByConversationKey(conversationKey)
                 .filter(com.whatsappclone.model.ConversationVanishMode::isEnabled)
-                .map(state -> 30)
+                .map(state -> 20)
                 .orElse(null);
     }
 
@@ -161,12 +161,21 @@ public class MessageService {
             List<Message> unread = messageRepository.findUnreadMessages(sender, receiver);
             if (!unread.isEmpty()) {
                 java.time.LocalDateTime now = java.time.LocalDateTime.now();
+                String conversationKey = buildDirectConversationKey(senderUsername, receiverUsername);
+                boolean isVanish = conversationVanishModeRepository.findByConversationKey(conversationKey)
+                        .map(com.whatsappclone.model.ConversationVanishMode::isEnabled)
+                        .orElse(false);
+
                 unread.forEach(msg -> {
                     msg.setStatus("read");
                     msg.setReadAt(now);
-                    // Start self-destruct countdown upon reading if selfDestructSeconds is present
-                    if (msg.getSelfDestructSeconds() != null && msg.getSelfDestructSeconds() > 0 && msg.getExpiresAt() == null) {
-                        msg.setExpiresAt(now.plusSeconds(msg.getSelfDestructSeconds()));
+                    // Start 20-second self-destruct countdown as soon as message is read
+                    int vanishSeconds = (msg.getSelfDestructSeconds() != null && msg.getSelfDestructSeconds() > 0)
+                            ? msg.getSelfDestructSeconds()
+                            : (isVanish ? 20 : 0);
+                    if (vanishSeconds > 0 && msg.getExpiresAt() == null) {
+                        msg.setSelfDestructSeconds(vanishSeconds);
+                        msg.setExpiresAt(now.plusSeconds(vanishSeconds));
                     }
                 });
                 messageRepository.saveAll(unread);
@@ -193,5 +202,31 @@ public class MessageService {
         com.whatsappclone.model.ChatGroup group = chatGroupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
         return messageRepository.findByGroupOrderByTimestampAsc(group);
+    }
+
+    public List<com.whatsappclone.dto.MessageResponseDto> getStarredMessages(String username) {
+        return messageRepository.findStarredMessagesForUser(username)
+                .stream()
+                .map(this::mapToResponseDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    public com.whatsappclone.dto.MessageResponseDto mapToResponseDto(Message msg) {
+        return com.whatsappclone.dto.MessageResponseDto.builder()
+                .id(msg.getId())
+                .content(msg.getContent())
+                .timestamp(msg.getTimestamp())
+                .status(msg.getStatus())
+                .senderUsername(msg.getSender() != null ? msg.getSender().getUsername() : null)
+                .receiverUsername(msg.getReceiver() != null ? msg.getReceiver().getUsername() : null)
+                .mediaUrl(msg.getMediaUrl())
+                .mediaType(msg.getMediaType())
+                .fileName(msg.getFileName())
+                .fileSize(msg.getFileSize())
+                .isStarred(msg.isStarred())
+                .isPinned(msg.isPinned())
+                .isForwarded(msg.isForwarded())
+                .messageType(msg.getMessageType())
+                .build();
     }
 }

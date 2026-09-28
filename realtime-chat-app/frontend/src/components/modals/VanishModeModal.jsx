@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, EyeOff, Shield, AlertTriangle } from 'lucide-react';
 import { useUI } from '../../context/UIContext';
 import { useChat } from '../../context/ChatContext';
@@ -6,7 +6,7 @@ import { apiFetch } from '../../lib/apiFetch';
 
 export default function VanishModeModal() {
   const { closeModal } = useUI();
-  const { selectedContact, setContacts } = useChat();
+  const { selectedContact, setContacts, toggleVanishMode } = useChat();
 
   const [enabled, setEnabled] = useState(selectedContact?.vanishMode || false);
   const [timerSeconds, setTimerSeconds] = useState(selectedContact?.selfDestructSeconds || 30);
@@ -25,16 +25,9 @@ export default function VanishModeModal() {
     if (!selectedContact) return;
     setSaving(true);
     try {
-      await apiFetch('/api/vanish/toggle', {
-        method: 'POST',
-        body: JSON.stringify({
-          targetUsername: selectedContact.username || selectedContact.name,
-          groupId: selectedContact.isGroup ? selectedContact.id : null,
-          vanishMode: enabled,
-          selfDestructSeconds: timerSeconds,
-        }),
-      });
-      // Update locally
+      if (toggleVanishMode) {
+        await toggleVanishMode(selectedContact, enabled);
+      }
       setContacts((prev) =>
         prev.map((c) =>
           c.id === selectedContact.id ? { ...c, vanishMode: enabled, selfDestructSeconds: timerSeconds } : c
@@ -42,15 +35,11 @@ export default function VanishModeModal() {
       );
       closeModal('vanish');
     } catch (e) {
-      // Fallback update
-      setContacts((prev) =>
-        prev.map((c) =>
-          c.id === selectedContact.id ? { ...c, vanishMode: enabled, selfDestructSeconds: timerSeconds } : c
-        )
-      );
+      console.error('Error saving vanish settings:', e);
       closeModal('vanish');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (

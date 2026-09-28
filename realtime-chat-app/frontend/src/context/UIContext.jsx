@@ -10,6 +10,7 @@ export const UIProvider = ({ children }) => {
   // Modals visibility state
   const [modals, setModals] = useState({
     group: false,
+    groupInfo: false,
     profile: false,
     media: false,
     forward: false,
@@ -37,6 +38,7 @@ export const UIProvider = ({ children }) => {
       // Close all modals if no name specified
       setModals({
         group: false,
+        groupInfo: false,
         profile: false,
         media: false,
         forward: false,

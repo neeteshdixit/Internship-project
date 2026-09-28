@@ -32,12 +32,17 @@ public class AuthService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new UserAlreadyExistsException("Email is already registered");
         }
-        // Note: Phone number unique nahi hai — ek number se multiple accounts allowed hain
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().trim().isEmpty()) {
+            String cleanPhone = request.getPhoneNumber().trim();
+            if (userRepository.existsByPhoneNumber(cleanPhone)) {
+                throw new UserAlreadyExistsException("This mobile number is already registered. Each mobile number can only be used once.");
+            }
+        }
 
         User user = User.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
-                .phoneNumber(request.getPhoneNumber())
+                .phoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : null)
                 .password(passwordEncoder.encode(request.getPassword()))
                 .profilePicUrl(request.getProfilePicUrl())
                 .build();

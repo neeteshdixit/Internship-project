@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Setu Connect — Clickable Prototype</title>
+<style>
+:root{
+  --bg-darker:#0d1117;--bg-dark:#161b22;--bg-light:#21262d;--border-color:#30363d;
+  --primary:#00a884;--primary-hover:#008f72;--primary-dark:#007a62;--primary-glow:rgba(0,168,132,.25);
+  --text-main:#e6edf3;--text-muted:#8b949e;--text-light:#fff;--text-inv:#111b21;
+  --chat-sender:#005c4b;--chat-receiver:#202c33;--chat-input-bg:#2a3942;
+  --card-bg:#161b22;--hover-bg:rgba(255,255,255,.05);
+  --danger:#f85149;--icon-color:#e6edf3;--input-text:#e6edf3;--placeholder:#8b949e;
+  --shadow-lg:0 10px 30px rgba(0,0,0,.5);
+  --accent-vanish:#4f46e5;--accent-amber:#f59e0b;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+.light-mode{
+  --bg-darker:#f0f2f5;--bg-dark:#fff;--bg-light:#f7f9fa;--border-color:#e3e7eb;
+  --primary:#008069;--primary-hover:#006b57;--primary-dark:#005a49;--primary-glow:rgba(0,128,105,.15);
+  --text-main:#111b21;--text-muted:#667781;--text-light:#fff;--text-inv:#fff;
+  --chat-sender:#d9fdd3;--chat-receiver:#fff;--chat-input-bg:#f0f2f5;
+  --card-bg:#fff;--hover-bg:rgba(0,0,0,.04);
+  --danger:#dc2626;--icon-color:#111b21;--input-text:#111b21;--placeholder:#667781;
+  --shadow-lg:0 10px 30px rgba(0,0,0,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--bg-darker);color:var(--text-main);overflow:hidden;transition:.3s}
+button{font-family:var(--font);cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:var(--font)}
+.icon{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+i{font-style:normal}
+
+/* ── Authentication ── */
+#auth{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% -10%,var(--primary-glow),transparent 60%),var(--bg-darker);z-index:50;transition:.3s}
+#auth.hidden{display:none}
+.auth-card{width:min(420px,92vw);background:var(--card-bg);border:1px solid var(--border-color);border-radius:16px;padding:36px 32px;box-shadow:var(--shadow-lg);text-align:center}
+.auth-logo{width:56px;height:56px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 0 0 6px var(--primary-glow)}
+.auth-logo .icon{width:30px;height:30px;stroke:var(--text-light)}
+.auth-card h1{font-size:24px;font-weight:700;letter-spacing:-.5px}
+.auth-card .tag{color:var(--text-muted);font-size:14px;margin:6px 0 24px}
+.field{text-align:left;margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px}
+.field input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-light);color:var(--input-text);font-size:15px;outline:none}
+.field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+.btn-primary{width:100%;padding:13px;border-radius:10px;background:var(--primary);color:var(--text-light);font-size:15px;font-weight:600;margin-top:8px;transition:.2s}
+.btn-primary:hover{background:var(--primary-hover)}
+.error-banner{display:none;background:rgba(248,81,73,.12);border:1px solid var(--danger);color:var(--danger);font-size:13px;padding:9px 12px;border-radius:8px;margin-bottom:14px}
+.error-banner.show{display:block}
+.auth-switch{margin-top:18px;font-size:13px;color:var(--text-muted)}
+.auth-switch button{color:var(--primary);font-weight:600}
+#regFields{display:none}
+#regFields.show{display:block}
+
+/* ── Main app ── */
+#app{display:none;height:100vh;width:100vw}
+#app.show{display:flex}
+.nav-rail{width:70px;background:var(--bg-dark);border-right:1px solid var(--border-color);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px}
+.rail-btn{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);transition:.2s;position:relative}
+.rail-btn:hover{background:var(--hover-bg);color:var(--text-main)}
+.rail-btn.active{color:var(--primary);background:var(--primary-glow);border-radius:12px}
+.rail-btn .badge{position:absolute;top:6px;right:6px;width:9px;height:9px;border-radius:50%;background:var(--danger)}
+.rail-logo{width:44px;height:44px;border-radius:12px;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;margin-bottom:10px}
+
+.side-panel{width:360px;background:var(--bg-dark);border-right:1px solid var(--border-color);display:flex;flex-direction:column;min-width:300px}
+.panel-head{height:60px;display:flex;align-items:center;padding:0 16px;gap:12px;border-bottom:1px solid var(--border-color)}
+.panel-head .avatar{width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none}
+.panel-head h2{font-size:16px;flex:1}
+.chip{font-size:11px;padding:3px 8px;border-radius:8px;background:var(--primary-glow);color:var(--primary);font-weight:600}
+.head-btn{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-muted)}
+.head-btn:hover{background:var(--hover-bg);color:var(--text-main)}
+
+.search-wrap{padding:10px 14px;border-bottom:1px solid var(--border-color)}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--bg-light);border-radius:8px;padding:9px 12px;color:var(--placeholder)}
+.search-box input{flex:1;background:none;border:none;outline:none;color:var(--input-text);font-size:14px}
+.filter-chips{display:flex;gap:8px;padding:10px 14px;overflow-x:auto;border-bottom:1px solid var(--border-color)}
+.filter-chips::-webkit-scrollbar{display:none}
+.fchip{font-size:12px;padding:6px 12px;border-radius:10px;background:var(--bg-light);color:var(--text-muted);white-space:nowrap;transition:.2s}
+.fchip.active{background:var(--primary);color:#fff}
+.fchip:hover{background:var(--hover-bg)}
+
+.chat-list{flex:1;overflow-y:auto}
+.chat-row{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;transition:.15s;border-bottom:1px solid transparent}
+.chat-row:hover{background:var(--hover-bg)}
+.chat-row.active{background:var(--primary-glow)}
+.avatar{width:48px;height:48px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;position:relative;flex:none}
+.avatar.online::after{content:'';position:absolute;bottom:1px;right:1px;width:12px;height:12px;border-radius:50%;background:var(--primary);border:2.5px solid var(--bg-dark)}
+.chat-meta{flex:1;min-width:0}
+.chat-top{display:flex;justify-content:space-between;align-items:baseline}
+.chat-name{font-size:15px;font-weight:600}
+.chat-time{font-size:11px;color:var(--text-muted)}
+.chat-msg{font-size:13px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
+.chat-msg .unread{font-size:10px;background:var(--primary);color:#fff;border-radius:10px;padding:1px 7px;font-weight:700;margin-left:auto}
+.grp-tag{font-size:9px;background:var(--hover-bg);border-radius:6px;padding:1px 5px;color:var(--text-muted)}
+.tick{color:var(--primary);font-size:11px}
+
+.panel-foot{padding:12px 14px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-muted)}
+.sec-chip{display:flex;align-items:center;gap:6px}
+.logout-btn{display:flex;align-items:center;gap:6px;color:var(--text-muted);padding:6px 10px;border-radius:8px}
+.logout-btn:hover{background:var(--hover-bg);color:var(--danger)}
+
+/* ── Chat window ── */
+.chat-window{flex:1;display:flex;flex-direction:column;background:var(--bg-darker)}
+.win-head{height:60px;background:var(--bg-dark);border-bottom:1px solid var(--border-color);display:flex;align-items:center;padding:0 16px;gap:12px}
+.win-head .avatar{width:36px;height:36px;font-size:14px}
+.win-info{flex:1;min-width:0}
+.win-info h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px}
+.online-dot{width:8px;height:8px;border-radius:50%;background:var(--primary)}
+.win-info p{font-size:12px;color:var(--primary);font-style:italic}
+.win-actions{display:flex;gap:2px}
+.back-btn{display:none}
+.welcomescreen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:40px}
+.welcome-shield{width:90px;height:90px;border-radius:50%;background:var(--primary-glow);display:flex;align-items:center;justify-content:center;color:var(--primary)}
+.welcome-shield .icon{width:44px;height:44px}
+.welcomescreen h2{font-size:24px;font-weight:700}
+.welcomescreen p{color:var(--text-muted);max-width:320px;font-size:14px;line-height:1.5}
+.enc-note{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);background:var(--bg-dark);padding:10px 16px;border-radius:12px;border:1px solid var(--border-color)}
+
+.feed{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px}
+.msg{max-width:65%;display:flex;flex-direction:column;position:relative;margin:2px 0}
+.msg.sent{align-self:flex-end}
+.msg.recv{align-self:flex-start}
+.bubble{padding:8px 12px;border-radius:10px;font-size:14px;line-height:1.4;position:relative;box-shadow:0 1px 1px rgba(0,0,0,.15)}
+.msg.sent .bubble{background:var(--chat-sender);border-top-right-radius:3px}
+.msg.recv .bubble{background:var(--chat-receiver);border-top-left-radius:3px}
+.bubble .time{display:block;text-align:right;font-size:10px;color:var(--text-muted);margin-top:3px}
+.bubble .time .ticks{color:#53bdeb;margin-left:2px;letter-spacing:-1px}
+.msg-day{align-self:center;background:var(--bg-light);color:var(--text-muted);font-size:11px;padding:4px 12px;border-radius:12px;margin:12px 0}
+.typing{color:var(--primary);font-style:italic;font-size:12px;display:none}
+.typing.show{display:block}
+
+.composer{background:var(--chat-input-bg);padding:10px 16px;display:flex;align-items:center;gap:10px;border-radius:14px;margin:0 20px 20px}
+.comp-btn{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex:none}
+.comp-btn:hover{background:var(--hover-bg)}
+.composer input{flex:1;background:none;border:none;outline:none;color:var(--input-text);font-size:16px}
+.send-btn{width:38px;height:38px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;flex:none;transition:.2s}
+.send-btn:hover{background:var(--primary-hover)}
+.composer-wrap{background:transparent;padding:0 0 12px}
+
+/* ── Tab panels (status/calls/analytics/settings) ── */
+.tab-body{flex:1;overflow-y:auto;padding:14px}
+.card{background:var(--bg-light);border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid var(--border-color)}
+.card h3{font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.status-post{display:flex;gap:10px}
+.status-post .avatar{width:52px;height:52px;border:2px solid var(--primary)}
+.s-row{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px solid var(--border-color);cursor:pointer}
+.s-row:last-child{border:none}
+.ring{width:50px;height:50px;border-radius:50%;padding:3px;background:conic-gradient(var(--primary) 0 70%,var(--border-color) 70%);flex:none}
+.ring .avatar{width:44px;height:44px;font-size:14px}
+.tab-div{font-size:11px;color:var(--text-muted);font-weight:600;margin:14px 0 4px}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--bg-light);border:1px solid var(--border-color);border-radius:12px;padding:14px;text-align:center}
+.stat .num{font-size:22px;font-weight:700;color:var(--primary)}
+.stat .lbl{font-size:11px;color:var(--text-muted);margin-top:2px}
+.health{display:flex;gap:10px;margin-bottom:12px}
+.health-card{flex:1;background:var(--bg-light);border:1px solid var(--border-color);border-radius:12px;padding:14px;text-align:center}
+.health-card .num{font-size:24px;font-weight:700}
+.hot{color:var(--accent-amber)}.bolt{color:var(--primary)}
+.heat{display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:10px}
+.hbar{flex:1;background:var(--primary);border-radius:3px 3px 0 0;opacity:.55}
+.podium{display:flex;justify-content:center;gap:10px;margin-top:7px}
+.podium .e{font-size:22px}
+.setting-row{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-bottom:1px solid var(--border-color)}
+.setting-row:last-child{border:none}
+.switch{width:40px;height:22px;border-radius:12px;background:var(--border-color);position:relative;transition:.2s;cursor:pointer}
+.switch.on{background:var(--primary)}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on::after{left:20px}
+.swatches{display:flex;gap:8px}
+.sw{width:34px;height:34px;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.sw.active{border-color:var(--text-main)}
+.seg{display:flex;background:var(--bg-light);border-radius:8px;overflow:hidden;border:1px solid var(--border-color)}
+.seg button{padding:7px 14px;font-size:12px;color:var(--text-muted);border-right:1px solid var(--border-color)}
+.seg button.active{background:var(--primary);color:#fff}
+.seg button:last-child{border:none}
+.toggle-group{display:flex;gap:6px}
+.tg{font-size:11px;padding:4px 8px;border-radius:6px;background:var(--bg-light);cursor:pointer;border:1px solid var(--border-color)}
+.tg.active{background:var(--primary);color:#fff}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--bg-light);border:1px solid var(--border-color);color:var(--text-main);padding:12px 18px;border-radius:12px;box-shadow:var(--shadow-lg);font-size:13px;transition:.3s;z-index:100;opacity:0;display:flex;gap:8px;align-items:center}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast .icon{color:var(--primary)}
+
+/* ── Mobile ── */
+.mobile-rail{display:none}
+@media(max-width:768px){
+  .nav-rail{display:none}
+  .mobile-rail{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--bg-dark);border-top:1px solid var(--border-color);z-index:20;padding-bottom:env(safe-area-inset-bottom)}
+  .mobile-rail .rail-btn{flex:1;border-radius:0;height:56px}
+  .mobile-rail .rail-btn.active{background:var(--primary-glow);border-radius:0}
+  .side-panel{width:100%;min-width:0}
+  .chat-window{position:fixed;inset:0;z-index:30;background:var(--bg-darker);transform:translateX(100%);transition:transform .25s}
+  .chat-window.open{transform:translateX(0)}
+  .back-btn{display:flex}
+  .win-head .win-actions{overflow-x:auto}
+  .msg{max-width:85%}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════ AUTH ══════════ -->
+<div id="auth">
+  <div class="auth-card">
+    <div class="auth-logo"><svg class="icon"><path d="M12 21s-7-4.5-9.5-9C.8 8.6 3 5 6.5 5c2 0 3.3 1 4 2 .2.3.4.3.6 0 .7-1 2-2 4-2 3.5 0 5.7 3.6 4 7-2.5 4.5-9.5 9-9.5 9z"/><path d="M9 12h6M12 9v6"/></svg></div>
+    <h1>Setu Connect</h1>
+    <p class="tag">&quot;Login karein ke liye apna username &amp; password daalein&quot;</p>
+    <div class="error-banner" id="authErr">Invalid username or password. Deno bhi try karein.</div>
+    <div class="field"><label>Username / Phone number</label><input id="aUser" placeholder="e.g. rahul_k" value="rahul_k"/></div>
+    <div class="field"><label>Password</label><input id="aPass" type="password" placeholder="••••••••" value="12345678"/></div>
+    <div id="regFields">
+      <div class="field"><label>Full Name</label><input placeholder="Rahul Kumar"/></div>
+      <div class="field"><label>Email</label><input placeholder="rahul@email.com"/></div>
+      <div class="field"><label>Phone Number</label><input placeholder="+91 98765 43210"/></div>
+    </div>
+    <button class="btn-primary" id="authBtn" onclick="doAuth()">Sign In</button>
+    <p class="auth-switch">Account nahi hai? <button onclick="toggleAuthMode()" id="authSwitch">Naya Banayein</button></p>
+  </div>
+</div>
+
+<!-- ══════════ APP ══════════ -->
+<div id="app">
+
+  <!-- Desktop Nav Rail -->
+  <div class="nav-rail">
+    <div class="rail-logo"><svg class="icon"><path d="M12 21s-7-4.5-9.5-9C.8 8.6 3 5 6.5 5c2 0 3.3 1 4 2 .2.3.4.3.6 0 .7-1 2-2 4-2 3.5 0 5.7 3.6 4 7-2.5 4.5-9.5 9-9.5 9z"/><path d="M9 12h6M12 9v6"/></svg></div>
+    <button class="rail-btn active" data-tab="chats" onclick="setTab('chats')"><svg class="icon"><path d="M4 4h16v12H7.5L4 19.5z"/><path d="M8 9h8M8 12h5"/></svg></button>
+    <button class="rail-btn" data-tab="status" onclick="setTab('status')"><svg class="icon"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg></button>
+    <button class="rail-btn" data-tab="calls" onclick="setTab('calls')"><span class="badge"></span><svg class="icon"><path d="M6.8 3H4a1.5 1.5 0 0 0-1.6 1.6c.3 5.2 2.9 9.9 6.6 13.2 3.2 3 7.8 4.6 12.8 4.6A1.5 1.5 0 0 0 21 20.4v-2.8a1.5 1.5 0 0 0-1.2-1.5l-3-.7a1.5 1.5 0 0 0-1.6.6l-1 1.5A14 14 0 0 1 6.4 12.7l1.5-1a1.5 1.5 0 0 0 .6-1.6l-.7-3A1.5 1.5 0 0 0 6.8 3z"/></svg></button>
+    <button class="rail-btn" data-tab="analytics" onclick="setTab('analytics')"><svg class="icon"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg></button>
+    <button class="rail-btn" data-tab="settings" onclick="setTab('settings')"><svg class="icon"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-4h.2A1.7 1.7 0 0 0 4.7 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.8-2.8.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h4v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.8 2.8-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <div style="flex:1"></div>
+    <button class="rail-btn" onclick="toggleTheme()" title="Toggle theme"><svg class="icon"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg></button>
+  </div>
+
+  <!-- Side Panel (left column) -->
+  <div class="side-panel" id="sidePanel"></div>
+
+  <!-- Chat Window -->
+  <div class="chat-window" id="chatWindow">
+    <div class="win-head">
+      <button class="head-btn back-btn" onclick="closeChatMobile()"><svg class="icon"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="avatar" id="winAvatar">A</div>
+      <div class="win-info">
+        <h3><span id="winName">Alice Sharma</span><span class="online-dot"></span></h3>
+        <p id="winStatus">online · typing…</p>
+      </div>
+      <div class="win-actions">
+        <button class="head-btn" title="Conversation control"><svg class="icon"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <button class="head-btn" title="Chat timeline"><svg class="icon"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
+        <button class="head-btn" title="Vanish mode" onclick="toast('Vanish mode on — indigo'),0"><svg class="icon"><path d="M17.7 7.7A2.5 2.5 0 0 0 19 11.11M3 7l3.7 3.7"></path><path d="M5 13.9A8.5 8.5 0 0 0 19.5 12M2 4l20 20"/><path d="M12 15v6M8 21h8"/></svg></button>
+        <button class="head-btn" title="Media gallery"><svg class="icon"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 15l-4-4-8 8"/></svg></button>
+        <button class="head-btn" title="Voice call" onclick="toast('Voice call connecting…')"><svg class="icon"><path d="M6.8 3H4a1.5 1.5 0 0 0-1.6 1.6c.3 5.2 2.9 9.9 6.6 13.2 3.2 3 7.8 4.6 12.8 4.6A1.5 1.5 0 0 0 21 20.4v-2.8a1.5 1.5 0 0 0-1.2-1.5l-3-.7a1.5 1.5 0 0 0-1.6.6l-1 1.5A14 14 0 0 1 6.4 12.7l1.5-1a1.5 1.5 0 0 0 .6-1.6l-.7-3A1.5 1.5 0 0 0 6.8 3z"/></svg></button>
+        <button class="head-btn" title="Video call" onclick="toast('Video call starting…')"><svg class="icon"><rect x="2" y="6" width="13" height="12" rx="2"/><path d="M15 10l6-3v10l-6-3"/></svg></button>
+        <button class="head-btn" style="color:var(--danger)" title="Nuke / panic wipe" onclick="toast('Panic wipe initiated — chat erased')"><svg class="icon"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+      </div>
+    </div>
+    <div class="feed" id="feed"></div>
+    <div class="composer-wrap">
+      <span class="typing" id="typingInd">typing…</span>
+      <div class="composer">
+        <button class="comp-btn" title="Emoji"><svg class="icon"><circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.2 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg></button>
+        <button class="comp-btn" title="GIF"><svg class="icon"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M7 15V9l3 3 3-3v6M16 9v6M16 12h2"/></svg></button>
+        <button class="comp-btn" title="Attach <svg...>" onclick="toast('Attachment menu')"><svg class="icon"><path d="M6 13.5 13 6.5a4 4 0 0 1 5.7 5.7l-8 8a5.5 5.5 0 0 1-7.8-7.8l7.5-7.5"/></svg></button>
+        <input id="msgInput" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendMsg()"/>
+        <button class="send-btn" onclick="sendMsg()"><svg class="icon" style="stroke:#fff"><path d="M3 12l18-9-6 18-2.5-6.5z"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile bottom rail -->
+  <div class="mobile-rail">
+    <button class="rail-btn active" data-tab="chats" onclick="setTab('chats')"><svg class="icon"><path d="M4 4h16v12H7.5L4 19.5z"/></svg></button>
+    <button class="rail-btn" data-tab="status" onclick="setTab('status')"><svg class="icon"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg></button>
+    <button class="rail-btn" data-tab="calls" onclick="setTab('calls')"><span class="badge"></span><svg class="icon"><path d="M6.8 3H4a1.5 1.5 0 0 0-1.6 1.6c.3 5.2 2.9 9.9 6.6 13.2 3.2 3 7.8 4.6 12.8 4.6A1.5 1.5 0 0 0 21 20.4v-2.8a1.5 1.5 0 0 0-1.2-1.5l-3-.7a1.5 1.5 0 0 0-1.6.6l-1 1.5A14 14 0 0 1 6.4 12.7l1.5-1a1.5 1.5 0 0 0 .6-1.6l-.7-3A1.5 1.5 0 0 0 6.8 3z"/></svg></button>
+    <button class="rail-btn" data-tab="analytics" onclick="setTab('analytics')"><svg class="icon"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg></button>
+    <button class="rail-btn" data-tab="settings" onclick="setTab('settings')"><svg class="icon"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-4h.2A1.7 1.7 0 0 0 4.7 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.8-2.8.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h4v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.8 2.8-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+
+</div>
+
+<div id="toast"><svg class="icon"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span id="toastMsg"></span></div>
+
+<script>
+/* ── Data ── */
+const CONTACTS=[
+  {name:'Alice Sharma',msg:'ok, on my way',time:'14:32',unread:2,online:true,color:'#00a884',replies:["Hey, how are you?","Perfect, see you soon!"]},
+  {name:'Dev Team',msg:'synced! ✅',time:'12:05',unread:0,online:true,grp:true,color:'#4f46e5',replies:["Deployment done.","All tests passing now."]},
+  {name:'Priya Verma',msg:"Let's meet for coffee",time:'11:48',unread:0,online:false,color:'#f59e0b',replies:["Coffee sounds good!","Anytime after 3pm."]},
+  {name:'Arjun Nair',msg:'Video is ready 🎬',time:'10:21',unread:0,online:true,color:'#ef4444',replies:["Sending the link now.","Check your inbox."]},
+  {name:'Sara Khan',msg:'Call me when free',time:'09:15',unread:5,online:false,color:'#7c3aed',replies:["Trying your number.","Pick up when you can."]}
+];
+const FILTERS=['ALL','FAVORITES','ARCHIVED','BLOCKED','UNREAD'];
+let activeTab='chats', activeContact=null, isRegister=false, filter='ALL', sentince=0;
+
+const sidePanel=document.getElementById('sidePanel');
+const chatWindow=document.getElementById('chatWindow');
+const feed=document.getElementById('feed');
+
+/* ── Side panels ── */
+function setTab(tab){
+  activeTab=tab;
+  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  renderSidePanel();
+  if(tab==='chats' && activeContact) renderChat(); else if(tab!=='chats') clearChat();
+}
+function clearChat(){
+  if(window.innerWidth<=768){chatWindow.classList.remove('open');}
+  activeContact=null; hideOnMobile(); renderWelcome();
+}
+function hideOnMobile(){ if(!activeContact) return; }
+
+const contRow=(c,active)=>`<div class="chat-row ${active?'active':''}" onclick="openChat('${c.name}')">
+  <div class="avatar ${c.online?'online':''}" style="background:${c.color}">${c.name[0]}</div>
+  <div class="chat-meta">
+    <div class="chat-top"><span class="chat-name">${c.name}</span><span class="chat-time">${c.time}</span></div>
+    <div class="chat-msg">${c.grp?'<span class="grp-tag">GROUP</span> ':''}${c.msg} ${c.unread?'<span class="unread">'+c.unread+'</span>':'<span class="tick">✓✓</span>'}</div>
+  </div></div>`;
+
+function renderSidePanel(){
+  const isMobile=window.innerWidth<=768;
+  if(activeTab==='chats'){ renderChatsPanel(); return; }
+  const heads={
+    status:'Status',calls:'Calls',analytics:'Conversation Health',settings:'Settings &amp; Hubs'
+  };
+  const headBase=`<div class="panel-head"><div class="avatar">S</div><h2>${heads[activeTab]}</h2><button class="head-btn" onclick="toggleTheme()"><svg class="icon"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg></button></div>`;
+  let body='';
+  if(activeTab==='status') body=`
+    <div class="tab-body">
+      <div class="card"><h3>Your Story</h3>
+        <div class="status-post">
+          <div class="avatar" style="border:2px solid var(--primary)">S</div>
+          <div style="flex:1"><input class="search-box" style="width:100%;margin-top:6px" placeholder="Type a text status…"/></div>
+        </div>
+      </div>
+      <div class="tab-div">RECENT UPDATES</div>
+      ${CONTACTS.map(c=>`<div class="s-row" onclick="toast('Opening ${c.name} status')"><div class="ring"><div class="avatar" style="background:${c.color}">${c.name[0]}</div></div><div><div style="font-weight:600">${c.name}</div><div style="font-size:11px;color:var(--text-muted)">${c.time.replace(':','h')} ago</div></div></div>`).join('')}
+    </div>`;
+  else if(activeTab==='calls') body=`
+    <div class="tab-body">
+      ${[
+        {n:'Arjun Nair',t:'video',d:'12:34',ico:'in',missed:false},
+        {n:'Sara Khan',t:'audio',d:'4:08',ico:'out',missed:true},
+        {n:'Priya Verma',t:'audio',d:'22:10',ico:'in',missed:false},
+        {n:'Dev Team',t:'video',d:'8:41',ico:'out',missed:false}
+      ].map(c=>`<div class="s-row" onclick="toast('Calling ${c.n}…')">
+        <div class="avatar" style="background:var(--primary);width:44px;height:44px">${c.n[0]}</div>
+        <div class="chat-meta"><div class="chat-top"><span class="chat-name">${c.n}</span><span class="chat-time">${c.d}</span></div>
+        <div class="chat-msg" style="color:${c.missed?'var(--danger)':'var(--primary)'}"><svg class="icon" style="width:14px;height:14px"><path d="${c.ico==='out'?'M5 15l4-4 3 3 3-3c-5-3-8-5-13-3z':'M5 9l4 4 3-3 3 3c-5-3-8-5-13-3z'}"/></svg>${c.t==='video'?'Video':'Voice'} · ${c.missed?'Missed':'Answered'}</div></div>
+        <svg class="icon" style="color:var(--primary)"><path d="M6.8 3H4a1.5 1.5 0 0 0-1.6 1.6c.3 5.2 2.9 9.9 6.6 13.2 3.2 3 7.8 4.6 12.8 4.6A1.5 1.5 0 0 0 21 20.4v-2.8a1.5 1.5 0 0 0-1.2-1.5l-3-.7a1.5 1.5 0 0 0-1.6.6l-1 1.5A14 14 0 0 1 6.4 12.7l1.5-1a1.5 1.5 0 0 0 .6-1.6l-.7-3A1.5 1.5 0 0 0 6.8 3z"/></svg>
+      </div>`).join('')}
+      <div class="enc-note" style="justify-content:center"><svg class="icon"><path d="M12 2l7 3v6c0 5-3.5 8.5-7 11-3.5-2.5-7-6-7-11V5z"/></svg>End-to-end encrypted calls</div>
+    </div>`;
+  else if(activeTab==='analytics') body=`
+    <div class="tab-body">
+      <div class="health">
+        <div class="health-card"><i class="hot">🔥</i><div class="num hot">21</div><div style="font-size:11px;color:var(--text-muted)">Day Streak</div></div>
+        <div class="health-card"><i class="bolt">⚡</i><div class="num bolt">92</div><div style="font-size:11px;color:var(--text-muted)">Health Score</div></div>
+      </div>
+      <div class="statgrid">
+        <div class="stat"><div class="num">1,284</div><div class="lbl">Total Messages</div></div>
+        <div class="stat"><div class="num">3.2s</div><div class="lbl">Avg Response</div></div>
+        <div class="stat"><div class="num">604</div><div class="lbl">Sent by You</div></div>
+        <div class="stat"><div class="num">680</div><div class="lbl">Received</div></div>
+      </div>
+      <div class="card"><h3>Top Emojis <span class="podium"><span class="e">😂</span><span class="e">👍</span><span class="e">🔥</span></span></h3></div>
+      <div class="card"><h3>Activity · last 24h</h3>
+        <div class="heat" id="heat"></div></div>
+    </div>`;
+  else if(activeTab==='settings') body=`
+    <div class="tab-body">
+      <div class="card"><h3>Device &amp; Storage Hubs</h3>
+        <div class="setting-row"><span>Device Sync</span><button class="head-btn"><svg class="icon"><rect x="3" y="4" width="13" height="12" rx="2"/><path d="M8 16v4M12 16v4M16 16v4"/></svg></button></div>
+        <div class="setting-row"><span>Storage Manager</span><button class="head-btn"><svg class="icon"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8M8 14h5"/></svg></button></div>
+        <div class="setting-row"><span>Message Recovery</span><button class="head-btn"><svg class="icon"><path d="M4 7V4m0 3h14a7 7 0 1 1-7 7M4 7l3 3"/></svg></button></div>
+      </div>
+      <div class="card"><h3>Privacy &amp; Security</h3>
+        <div class="setting-row"><span>Last seen</span><div class="toggle-group"><span class="tg active">Everyone</span><span class="tg">Contacts</span><span class="tg">Nobody</span></div></div>
+        <div class="setting-row"><span>Read receipts</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="setting-row"><span>Online status</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+      </div>
+      <div class="card"><h3>Chat Wallpaper</h3><div class="swatches">
+        ${['#005c4b','#202c33','#4f46e5','#7c3aed','#f59e0b','#ef4444'].map((c,i)=>`<div class="sw ${i===0?'active':''}" style="background:${c}" onclick="swActive(this)"></div>`).join('')}
+      </div></div>
+      <div class="card"><h3>Font Size</h3><div class="seg">
+        <button onclick="segOn(this)">Small</button><button class="active" onclick="segOn(this)">Medium</button><button onclick="segOn(this)">Large</button>
+      </div></div>
+    </div>`;
+  sidePanel.innerHTML=headBase+body;
+  if(activeTab==='analytics'){ const h=document.getElementById('heat'); h.innerHTML=[20,35,45,25,60,75,40,90,70,50,80,95,60,45,70,85,55,40,65,50,75,60,40,30].map(v=>`<div class="hbar" style="height:${v}%"></div>`).join(''); }
+}
+function swActive(el){ document.querySelectorAll('.sw').forEach(s=>s.classList.remove('active')); el.classList.add('active'); }
+function segOn(el){ document.querySelectorAll('.seg button').forEach(b=>b.classList.remove('active')); el.classList.add('active'); }
+
+/* ── Chats panel ── */
+function renderChatsPanel(){
+  const isMobile=window.innerWidth<=768;
+  const head=`<div class="panel-head"><div class="avatar">R</div><h2>Setu user <span class="chip">E2E</span></h2>
+    <button class="head-btn" title="New group"><svg class="icon"><circle cx="9" cy="9" r="3.5"/><path d="M3 19c.5-3 3-4.5 6-4.5s5.5 1.5 6 4.5M18 8v5M15.5 10.5h5"/></svg></button>
+    <button class="head-btn" title="Add contact"><svg class="icon"><path d="M12 5v14M5 12h14"/></svg></button></div>`;
+  const search=`<div class="search-box"><svg class="icon" style="width:16px;height:16px"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Search or start new chat" oninput="searchChat(this.value)"/></div>`;
+  let chips=`<div class="filter-chips">`+FILTERS.map(f=>`<button class="fchip ${f===filter?'active':''}" onclick="setFilter('${f}',this)">${f}</button>`).join('')+`</div>`;
+  let rows=CONTACTS.map(c=>contRow(c, activeContact&&activeContact.name===c.name)).join('');
+  let foot=`<div class="panel-foot"><span class="sec-chip"><svg class="icon" style="width:14px;height:14px;color:var(--primary)"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>E2E encrypted</span><button class="logout-btn" onclick="logout()"><svg class="icon" style="width:15px;height:15px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Logout</button></div>`;
+  sidePanel.innerHTML=head+search+chips+`<div class="chat-list">${rows}</div>`+foot;
+}
+function setFilter(f,el){ filter=f; if(el){document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('active')); el.classList.add('active');} renderSidePanel(); }
+function searchChat(qs){
+  const q=qs.trim().toLowerCase();
+  const rows=CONTACTS.filter(c=>!q||c.name.toLowerCase().includes(q)).map(c=>contRow(c, activeContact&&activeContact.name===c.name)).join('');
+  document.querySelector('.chat-list').innerHTML=rows||'<div style="padding:30px;text-align:center;color:var(--text-muted)">No chats found</div>';
+}
+
+/* ── Chat window ── */
+function openChat(name){
+  const c=CONTACTS.find(x=>x.name===name); activeContact=c;
+  document.getElementById('winName').textContent=c.name;
+  document.getElementById('winAvatar').textContent=c.name[0];
+  document.getElementById('winAvatar').style.background=c.color;
+  document.getElementById('winStatus').textContent='online · typing…';
+  if(window.innerWidth<=768) chatWindow.classList.add('open');
+  renderChat(); renderSidePanel();
+  document.getElementById('typingInd').classList.add('show');
+  setTimeout(()=>{ var t=document.getElementById('typingInd'); if(t)t.classList.remove('show'); },1800);
+}
+function renderChat(){
+  const c=activeContact;
+  feed.innerHTML=`
+    <div class="msg-day">TODAY</div>
+    <div class="msg recv"><div class="bubble">Hey ${c.name[0]==='D'?'team guys':'there'}! kaise ho?<span class="time">09:12</span></div></div>
+    <div class="msg recv"><div class="bubble">${c.msg}<span class="time">${c.time}</span></div></div>
+    <div class="msg sent"><div class="bubble">Great, planning the demo ✨<span class="time">09:20 <span class="ticks">✓✓</span></span></div></div>
+    <div class="msg sent" id="lastSent"><div class="bubble" id="lastBubble"></div></div>`;
+  feed.scrollTop=feed.scrollHeight;
+}
+function sendMsg(){
+  const inp=document.getElementById('msgInput');
+  const txt=inp.value.trim(); if(!txt) return;
+  sentince++;
+  const b=document.getElementById('lastBubble');
+  b.textContent=txt+'\u00A0'; b.innerHTML=txt+`<span class="time">now <span class="ticks">✓</span></span>`;
+  document.getElementById('msgInput').value='';
+  feed.scrollTop=feed.scrollHeight;
+  setTimeout(()=>{ const t=document.querySelector('#lastBubble .ticks'); if(t)t.textContent='✓✓'; },600);
+}
+function renderWelcome(){
+  feed.innerHTML=`
+  <div class="welcomescreen">
+    <div class="welcome-shield"><svg class="icon"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+    <h2>Setu Connect</h2>
+    <p>Click a conversation to start chatting. Explore Status, Calls, Analytics &amp; Settings from the navigation rail.</p>
+    <div class="enc-note"><svg class="icon"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>End-to-end encrypted with AES-GCM</div>
+  </div>`;
+}
+function closeChatMobile(){ chatWindow.classList.remove('open'); }
+
+/* ── Auth / logout / theme / toast ── */
+function toggleAuthMode(){
+  isRegister=!isRegister;
+  document.getElementById('regFields').classList.toggle('show',isRegister);
+  document.getElementById('authBtn').textContent=isRegister?'Create Account':'Sign In';
+  document.getElementById('authSwitch').textContent=isRegister?'Already have an account? Sign In':'Naya Banayein';
+}
+function doAuth(){
+  const u=document.getElementById('aUser').value.trim();
+  if(!isRegister && u.toLowerCase().startsWith('rahul')){ login(); return; }
+  if(isRegister){ login(); return; }
+  document.getElementById('authErr').classList.add('show');
+}
+function login(){
+  document.getElementById('auth').classList.add('hidden');
+  document.getElementById('app').classList.add('show');
+  toast('Welcome to Setu Connect 👋');
+  renderSidePanel(); renderWelcome();
+}
+function logout(){
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('auth').classList.remove('hidden');
+  document.getElementById('authErr').classList.remove('show');
+}
+function toggleTheme(){ document.documentElement.classList.toggle('light-mode'); }
+let toastT;
+function toast(m){
+  document.getElementById('toastMsg').textContent=m;
+  document.getElementById('toast').classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>document.getElementById('toast').classList.remove('show'),2200);
+}
+
+window.addEventListener('resize',()=>{ if(window.innerWidth>768 && activeTab==='chats' && activeContact) chatWindow.classList.remove('open'); });
+
+/* init */
+renderSidePanel(); renderWelcome();
+</script>
+</body>
+</html>

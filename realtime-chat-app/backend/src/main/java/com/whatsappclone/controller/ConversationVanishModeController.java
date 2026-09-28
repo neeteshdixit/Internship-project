@@ -9,7 +9,7 @@ import java.security.Principal;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/vanish-mode")
+@RequestMapping({"/api/vanish-mode", "/api/vanish"})
 @RequiredArgsConstructor
 public class ConversationVanishModeController {
 
@@ -43,6 +43,22 @@ public class ConversationVanishModeController {
     ) {
         boolean enabled = extractEnabled(body);
         return ResponseEntity.ok(vanishModeService.updateGroupState(principal.getName(), groupId, enabled));
+    }
+
+    @PostMapping("/toggle")
+    public ResponseEntity<Map<String, Object>> toggleVanish(
+            @RequestBody Map<String, Object> body,
+            Principal principal
+    ) {
+        boolean enabled = extractEnabled(body);
+        if (body != null && body.containsKey("groupId") && body.get("groupId") != null) {
+            Long groupId = Long.valueOf(String.valueOf(body.get("groupId")));
+            return ResponseEntity.ok(vanishModeService.updateGroupState(principal.getName(), groupId, enabled));
+        } else if (body != null && (body.containsKey("targetUsername") || body.containsKey("peerUsername"))) {
+            String target = String.valueOf(body.containsKey("targetUsername") ? body.get("targetUsername") : body.get("peerUsername"));
+            return ResponseEntity.ok(vanishModeService.updateDirectState(principal.getName(), target, enabled));
+        }
+        return ResponseEntity.badRequest().build();
     }
 
     private boolean extractEnabled(Map<String, Object> body) {

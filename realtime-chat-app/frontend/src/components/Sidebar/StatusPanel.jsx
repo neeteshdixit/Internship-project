@@ -1,112 +1,429 @@
-﻿import React, { useState, useEffect } from 'react';
-import { Image, Type, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Camera, Edit3, Plus, Link, MoreVertical, Eye, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/apiFetch';
+import StatusViewerModal from '../status/StatusViewerModal';
+import StatusUploadModal from '../status/StatusUploadModal';
 
 export default function StatusPanel() {
   const { currentUser } = useAuth();
-  const [statuses, setStatuses] = useState([]);
+  const [storyGroups, setStoryGroups] = useState([]);
   const [myStatuses, setMyStatuses] = useState([]);
-  const [postType, setPostType] = useState('text');
-  const [text, setText] = useState('');
-  const [bgColor, setBgColor] = useState('#00a884');
-  const [imageUrl, setImageUrl] = useState('');
-  const [posting, setPosting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const BG_COLORS = ['#00a884', '#6366f1', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899'];
+  // Modals state
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [activeStoryGroupIndex, setActiveStoryGroupIndex] = useState(0);
 
-  useEffect(() => {
-    const fetchStatuses = async () => {
-      try {
-        const [all, mine] = await Promise.allSettled([
-          apiFetch('/api/statuses'),
-          apiFetch('/api/statuses/mine'),
-        ]);
-        if (all.status === 'fulfilled') setStatuses(all.value || []);
-        if (mine.status === 'fulfilled') setMyStatuses(mine.value || []);
-      } catch (e) {}
-    };
-    fetchStatuses();
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadInitialTab, setUploadInitialTab] = useState('upload'); // 'upload' | 'link' | 'text'
+
+  const myAvatar = currentUser?.profilePicUrl || currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100';
+
+  // Fetch all statuses
+  const fetchStatuses = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [allRes, mineRes] = await Promise.allSettled([
+        apiFetch('/api/statuses'),
+        apiFetch('/api/statuses/mine'),
+      ]);
+
+      let allGroups = allRes.status === 'fulfilled' && Array.isArray(allRes.value) ? allRes.value : [];
+      let mineList = mineRes.status === 'fulfilled' && Array.isArray(mineRes.value) ? mineRes.value : [];
+
+      // Filter out self from allGroups if present, or extract my group
+      const myGroup = allGroups.find(g => g.username?.toLowerCase() === currentUser?.username?.toLowerCase());
+      if (myGroup && myGroup.updates) {
+        setMyStatuses(myGroup.updates);
+      } else if (mineList.length > 0) {
+        setMyStatuses(mineList);
+      } else {
+        setMyStatuses([]);
+      }
+
+      // Contact groups (excluding self)
+      const contactGroups = allGroups.filter(g => g.username?.toLowerCase() !== currentUser?.username?.toLowerCase());
+      setStoryGroups(contactGroups);
+    } catch (e) {
+      console.error('Error fetching statuses:', e);
+    } finally {
+      setLoading(false);
+    }
   }, [currentUser]);
 
-  const postStatus = async () => {
-    if (postType === 'text' && !text.trim()) return;
-    if (postType === 'image' && !imageUrl.trim()) return;
-    setPosting(true);
-    try {
-      await apiFetch('/api/statuses', {
-        method: 'POST',
-        body: JSON.stringify({ type: postType.toUpperCase(), content: postType === 'text' ? text : imageUrl, backgroundColor: bgColor }),
-      });
-      setText('');
-      setImageUrl('');
-      const mine = await apiFetch('/api/statuses/mine');
-      setMyStatuses(mine || []);
-    } catch (e) { alert('Failed to post status'); }
-    setPosting(false);
+  useEffect(() => {
+    fetchStatuses();
+  }, [fetchStatuses]);
+
+  // Open viewer for My Status
+  const openMyStatus = () => {
+    if (myStatuses.length === 0) {
+      setUploadInitialTab('upload');
+      setIsUploadOpen(true);
+      return;
+    }
+    const myGroup = {
+      username: currentUser?.username || 'me',
+      avatar: myAvatar,
+      updates: myStatuses,
+    };
+    // Put myGroup at index 0 of the viewer list
+    setViewerList([myGroup, ...storyGroups]);
+    setActiveStoryGroupIndex(0);
+    setIsViewerOpen(true);
   };
 
-  const s = {
-    wrap: { flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#111b21', color: '#e9edef', overflow: 'hidden' },
-    header: { padding: '16px', backgroundColor: '#202c33', borderBottom: '1px solid #222d34', fontSize: '16px', fontWeight: 600 },
-    section: { padding: '12px 16px', borderBottom: '1px solid #1e2d35', fontSize: '12px', fontWeight: 700, color: '#8696a0', textTransform: 'uppercase', letterSpacing: '0.5px' },
-    statusItem: { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderBottom: '1px solid #1e2d35', cursor: 'pointer' },
-    statusAvatar: { width: '46px', height: '46px', borderRadius: '50%', border: '2px solid #00a884', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
+  // Open viewer for a specific contact
+  const [viewerList, setViewerList] = useState([]);
+  const openContactStatus = (contactIndex) => {
+    setViewerList(storyGroups);
+    setActiveStoryGroupIndex(contactIndex);
+    setIsViewerOpen(true);
   };
+
+  // Delete status handler
+  const handleDeleteStatus = async (statusId) => {
+    try {
+      await apiFetch(`/api/statuses/${statusId}`, { method: 'DELETE' });
+      fetchStatuses();
+    } catch (e) {
+      console.error('Failed to delete status:', e);
+    }
+  };
+
+  const hasMyStatus = myStatuses.length > 0;
+  const lastMyStatus = hasMyStatus ? myStatuses[myStatuses.length - 1] : null;
 
   return (
-    <div style={s.wrap}>
-      <div style={s.header}>Status</div>
-      <div style={{ overflowY: 'auto', flex: 1 }}>
-        {/* Post Status */}
-        <div style={{ padding: '12px 16px', backgroundColor: '#1a2630', borderBottom: '1px solid #222d34' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-            <button onClick={() => setPostType('text')} style={{ flex: 1, padding: '6px', borderRadius: '8px', border: 'none', backgroundColor: postType === 'text' ? '#00a884' : '#2a3942', color: '#fff', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}><Type size={13} /> Text</button>
-            <button onClick={() => setPostType('image')} style={{ flex: 1, padding: '6px', borderRadius: '8px', border: 'none', backgroundColor: postType === 'image' ? '#00a884' : '#2a3942', color: '#fff', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}><Image size={13} /> Image</button>
-          </div>
-          {postType === 'text' ? (
-            <>
-              <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                {BG_COLORS.map((c) => <div key={c} onClick={() => setBgColor(c)} style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: c, cursor: 'pointer', border: bgColor === c ? '2px solid #fff' : '2px solid transparent' }} />)}
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#111b21',
+        color: '#e9edef',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: '14px 16px',
+          backgroundColor: '#202c33',
+          borderBottom: '1px solid #222d34',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <span style={{ fontSize: '18px', fontWeight: 700, color: '#e9edef' }}>Status</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Direct Photo/Video Upload */}
+          <button
+            type="button"
+            onClick={() => {
+              setUploadInitialTab('upload');
+              setIsUploadOpen(true);
+            }}
+            title="Upload Photo or Video Status"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#00a884',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Camera size={20} />
+          </button>
+
+          {/* Text Status */}
+          <button
+            type="button"
+            onClick={() => {
+              setUploadInitialTab('text');
+              setIsUploadOpen(true);
+            }}
+            title="Write Text Status"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#8696a0',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Edit3 size={19} />
+          </button>
+
+          {/* Media Link */}
+          <button
+            type="button"
+            onClick={() => {
+              setUploadInitialTab('link');
+              setIsUploadOpen(true);
+            }}
+            title="Add Media via Link"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#8696a0',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Link size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Scroll Area */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {/* 1. My Status Row */}
+        <div
+          onClick={openMyStatus}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            borderBottom: '1px solid #1e2d35',
+            transition: 'background-color 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#182229')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+        >
+          {/* Avatar with WhatsApp Status Ring or Plus Badge */}
+          <div style={{ position: 'relative', width: '48px', height: '48px', flexShrink: 0 }}>
+            <img
+              src={myAvatar}
+              alt=""
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: hasMyStatus ? '2.5px solid #00a884' : '2px solid transparent',
+                padding: hasMyStatus ? '2px' : '0',
+                boxSizing: 'border-box',
+              }}
+            />
+            {!hasMyStatus && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '-1px',
+                  right: '-1px',
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  backgroundColor: '#00a884',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px solid #111b21',
+                }}
+              >
+                <Plus size={13} strokeWidth={3} />
               </div>
-              <input type="text" placeholder="What's on your mind?" value={text} onChange={(e) => setText(e.target.value)} style={{ width: '100%', padding: '8px 10px', backgroundColor: '#2a3942', border: 'none', borderRadius: '8px', color: '#e9edef', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '8px' }} />
-            </>
-          ) : (
-            <input type="url" placeholder="Image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} style={{ width: '100%', padding: '8px 10px', backgroundColor: '#2a3942', border: 'none', borderRadius: '8px', color: '#e9edef', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '8px' }} />
-          )}
-          <button onClick={postStatus} disabled={posting} style={{ width: '100%', padding: '8px', backgroundColor: '#00a884', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>{posting ? 'Posting...' : 'Post Status'}</button>
+            )}
+          </div>
+
+          {/* Details */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: '#e9edef' }}>
+              My status
+            </div>
+            <div style={{ fontSize: '13px', color: '#8696a0', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {hasMyStatus
+                ? `${myStatuses.length} update${myStatuses.length > 1 ? 's' : ''} • ${lastMyStatus?.createdAt || 'Tap to view'}`
+                : 'Tap to add status update'}
+            </div>
+          </div>
+
+          {/* Quick Action Icons */}
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setUploadInitialTab('upload');
+                setIsUploadOpen(true);
+              }}
+              title="Add Photo / Video"
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                backgroundColor: '#202c33',
+                border: 'none',
+                color: '#00a884',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <Camera size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUploadInitialTab('text');
+                setIsUploadOpen(true);
+              }}
+              title="Add Text Status"
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                backgroundColor: '#202c33',
+                border: 'none',
+                color: '#8696a0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <Edit3 size={15} />
+            </button>
+          </div>
         </div>
 
-        {myStatuses.length > 0 && <>
-          <div style={s.section}>My Status</div>
-          {myStatuses.map((st) => (
-            <div key={st.id} style={s.statusItem}>
-              <div style={{ ...s.statusAvatar, backgroundColor: st.backgroundColor || '#2a3942' }}>
-                {st.type === 'IMAGE' ? <img src={st.content} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '11px', color: '#fff', textAlign: 'center', padding: '4px' }}>{st.content?.substring(0, 20)}</span>}
-              </div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 500 }}>My Status</div>
-                <div style={{ fontSize: '12px', color: '#8696a0' }}>{new Date(st.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-              </div>
-            </div>
-          ))}
-        </>}
+        {/* 2. Recent Updates Section */}
+        <div
+          style={{
+            padding: '14px 16px 8px 16px',
+            fontSize: '12px',
+            fontWeight: 700,
+            color: '#00a884',
+            textTransform: 'uppercase',
+            letterSpacing: '0.6px',
+          }}
+        >
+          Recent Updates
+        </div>
 
-        <div style={s.section}>Recent Updates</div>
-        {statuses.length === 0 ? (
-          <div style={{ padding: '20px', textAlign: 'center', color: '#8696a0', fontSize: '13px' }}>No status updates from contacts</div>
-        ) : statuses.map((st) => (
-          <div key={st.id} style={s.statusItem}>
-            <div style={{ ...s.statusAvatar, backgroundColor: st.backgroundColor || '#2a3942' }}>
-              {st.type === 'IMAGE' ? <img src={st.content} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '11px', color: '#fff', textAlign: 'center', padding: '4px' }}>{st.content?.substring(0, 20)}</span>}
+        {loading ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#8696a0', fontSize: '13px' }}>
+            Loading status updates...
+          </div>
+        ) : storyGroups.length === 0 ? (
+          <div style={{ padding: '32px 16px', textAlign: 'center', color: '#8696a0' }}>
+            <div style={{ fontSize: '14px', fontWeight: 500, color: '#e9edef', marginBottom: '6px' }}>
+              No status updates
             </div>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 500 }}>@{st.username || 'User'}</div>
-              <div style={{ fontSize: '12px', color: '#8696a0' }}>{new Date(st.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            <div style={{ fontSize: '12px' }}>
+              Status updates from your contacts will appear here
             </div>
           </div>
-        ))}
+        ) : (
+          storyGroups.map((group, idx) => {
+            const latestUpdate = group.updates[group.updates.length - 1];
+            const updatesCount = group.updates.length;
+
+            return (
+              <div
+                key={group.username}
+                onClick={() => openContactStatus(idx)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #1a2630',
+                  transition: 'background-color 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#182229')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                {/* Contact Avatar with WhatsApp Green Ring */}
+                <div style={{ width: '48px', height: '48px', position: 'relative', flexShrink: 0 }}>
+                  <img
+                    src={group.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100'}
+                    alt=""
+                    style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2.5px solid #00a884',
+                      padding: '2px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  {updatesCount > 1 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '-2px',
+                        right: '-2px',
+                        backgroundColor: '#00a884',
+                        color: '#fff',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        borderRadius: '10px',
+                        padding: '1px 5px',
+                        border: '1.5px solid #111b21',
+                      }}
+                    >
+                      {updatesCount}
+                    </div>
+                  )}
+                </div>
+
+                {/* Details */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#e9edef' }}>
+                    @{group.username}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#8696a0', marginTop: '2px' }}>
+                    {latestUpdate?.createdAt || 'Recent update'}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
+
+      {/* WhatsApp Fullscreen Story Viewer Modal */}
+      <StatusViewerModal
+        isOpen={isViewerOpen}
+        onClose={() => setIsViewerOpen(false)}
+        initialUserIndex={activeStoryGroupIndex}
+        storyGroups={viewerList}
+        currentUser={currentUser}
+        onDeleteStatus={handleDeleteStatus}
+      />
+
+      {/* WhatsApp Status Creator Modal (Direct upload, link, text) */}
+      <StatusUploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        initialTab={uploadInitialTab}
+        onStatusPosted={fetchStatuses}
+      />
     </div>
   );
 }

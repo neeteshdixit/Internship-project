@@ -1,6 +1,35 @@
+/* Vanish Mode Anti-Screenshot & Content Protection */
+body.vanish-active {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* Ephemeral Privacy Veil on Message Bubbles:
+   In Vanish Mode, messages have a privacy veil so taking a full screenshot captures only blurred text.
+   Hovering over a message reveals it to read. */
+body.vanish-active .message-bubble-card {
+  filter: blur(6px);
+  transition: filter 0.15s ease;
+  user-select: none !important;
+}
+
+body.vanish-active:not(.window-inactive) .message-bubble-card:hover {
+  filter: none !important;
+}
+
+/* When window loses focus (e.g. Snipping tool, Alt-Tab), everything blurs hard */
+body.vanish-active.window-inactive .message-bubble-card {
+  filter: blur(14px) !important;
+}
+
 @media print {
-  body.vanish-active {
+  body.vanish-active,
+  body.vanish-active * {
     display: none !important;
+    visibility: hidden !important;
   }
 }
 

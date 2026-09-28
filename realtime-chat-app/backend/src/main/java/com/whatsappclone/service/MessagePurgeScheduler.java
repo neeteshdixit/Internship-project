@@ -21,11 +21,11 @@ public class MessagePurgeScheduler {
     private final MessageRepository messageRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
-    @Scheduled(fixedRate = 3000) // Runs every 3 seconds
+    @Scheduled(fixedRate = 1000) // Runs every 1 second for precision
     @Transactional
     public void purgeExpiredMessages() {
         LocalDateTime now = LocalDateTime.now();
-        List<Message> expiredMessages = messageRepository.findByExpiresAtLessThanEqual(now);
+        List<Message> expiredMessages = messageRepository.findExpiredUnpinnedMessages(now);
 
         if (!expiredMessages.isEmpty()) {
             for (Message msg : expiredMessages) {
@@ -33,6 +33,7 @@ public class MessagePurgeScheduler {
                         "type", "MESSAGE_DELETED",
                         "reason", "EXPIRED",
                         "messageId", msg.getId(),
+                        "id", msg.getId(),
                         "content", "DELETED"
                 );
 

@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Check, CheckCheck, Star, Pin, Trash2, Reply, MapPin, Download, FileText, CornerUpRight, Lock, Copy, Edit2, Play, Pause, ChevronDown, Phone, PhoneMissed, PhoneIncoming, PhoneOutgoing, PhoneOff, Video } from 'lucide-react';
+import { Check, CheckCheck, Star, Pin, Trash2, Reply, MapPin, Download, FileText, CornerUpRight, Lock, Copy, Edit2, Play, Pause, ChevronDown, Phone, PhoneMissed, PhoneIncoming, PhoneOutgoing, PhoneOff, Video, Flame, ShieldAlert, BarChart2 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
+import { apiFetch } from '../../lib/apiFetch';
+import { decryptPayload } from '../../crypto/cryptoEngine';
+import ViewOnceModal from './ViewOnceModal';
+import ForwardModal from './ForwardModal';
 
 const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','🙏','🔥','👏','😍','🎉','💯','😎'];
 
 export default function MessageBubble({ message, currentUser, onReply }) {
-  const { starMessage, pinMessage, deleteMessage, reactToMessage, markViewOnceOpened } = useChat();
+  const { starMessage, pinMessage, deleteMessage, reactToMessage, markViewOnceOpened, selectedContact, contacts, sendMessage, getChatKey } = useChat();
 
   // Hover/pin state — separate from showToolbar
   const [hovered, setHovered] = useState(false);
@@ -13,9 +17,42 @@ export default function MessageBubble({ message, currentUser, onReply }) {
   const hoverTimer = useRef(null);
 
   const [isViewingOnce, setIsViewingOnce] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(message.content || message.text || '');
+  const rawInitialText = message.content || message.text || '';
+  const [displayText, setDisplayText] = useState(rawInitialText);
+  const [editText, setEditText] = useState(rawInitialText);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const raw = message.content || message.text || '';
+    const isBase64Cipher = typeof raw === 'string' &&
+      raw.length >= 16 &&
+      /^[A-Za-z0-9+/=]+$/.test(raw.trim());
+
+    if (isBase64Cipher && message.iv) {
+      const candidates = [
+        selectedContact?.isGroup ? `group:${selectedContact.id}` : null,
+        message.groupId ? `group:${message.groupId}` : null,
+        selectedContact?.isGroup ? String(selectedContact.id) : null,
+        message.groupId ? String(message.groupId) : null,
+        'group:1',
+        '1',
+        getChatKey ? getChatKey(selectedContact) : null,
+      ].filter(Boolean);
+
+      decryptPayload(raw.trim(), message.iv, candidates).then((dec) => {
+        if (active && dec && dec !== raw) {
+          setDisplayText(dec);
+          message.content = dec;
+        }
+      }).catch(() => {});
+    } else {
+      setDisplayText(raw);
+    }
+    return () => { active = false; };
+  }, [message.content, message.text, message.iv, selectedContact, message.groupId, getChatKey]);
 
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -34,6 +71,43 @@ export default function MessageBubble({ message, currentUser, onReply }) {
   const isVoice = message.mediaType === 'VOICE' || message.messageType === 'VOICE';
   const isGif = message.mediaType === 'GIF' || message.messageType === 'GIF';
   const isSticker = message.mediaType === 'STICKER' || message.messageType === 'STICKER';
+
+  const isVanishMode = (message.isPinned || isPinned) ? false : (!!selectedContact?.vanishMode || (message.selfDestructSeconds != null && message.selfDestructSeconds > 0));
+  const isSeen = message.status === 'read' || !!message.readAt;
+
+  const [vanishCountdown, setVanishCountdown] = useState(() => {
+    if (!isVanishMode || !isSeen) return null;
+    const vanishLimitSec = message.selfDestructSeconds || 20;
+    const startTime = message.readAt ? new Date(message.readAt).getTime() : Date.now();
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    return Math.max(0, vanishLimitSec - elapsed);
+  });
+
+  useEffect(() => {
+    if (!isVanishMode || !isSeen) {
+      setVanishCountdown(null);
+      return;
+    }
+    const vanishLimitSec = message.selfDestructSeconds || 20;
+    const startTime = message.readAt ? new Date(message.readAt).getTime() : Date.now();
+
+    const checkTimer = () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, vanishLimitSec - elapsed);
+      setVanishCountdown(remaining);
+      return remaining;
+    };
+
+    checkTimer();
+    const interval = setInterval(() => {
+      const remaining = checkTimer();
+      if (remaining <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isVanishMode, isSeen, message.readAt, message.selfDestructSeconds]);
 
   // Toolbar: show on hover, hide after short grace period when mouse leaves
   const handleMouseEnter = () => {
@@ -65,12 +139,17 @@ export default function MessageBubble({ message, currentUser, onReply }) {
   };
 
   const handleCopy = () => {
-    const t = message.content || message.text || '';
+    const t = displayText || message.content || message.text || '';
     if (t) { navigator.clipboard.writeText(t); setCopied(true); setTimeout(() => setCopied(false), 1800); }
   };
 
   const handleSaveEdit = () => {
-    if (editText.trim()) { message.content = editText.trim(); message.isEdited = true; setIsEditing(false); }
+    if (editText.trim()) {
+      message.content = editText.trim();
+      setDisplayText(editText.trim());
+      message.isEdited = true;
+      setIsEditing(false);
+    }
   };
 
   const toggleSpeed = () => {
@@ -148,22 +227,178 @@ export default function MessageBubble({ message, currentUser, onReply }) {
       );
     }
 
+    // Poll Card (does not require mediaUrl)
+    if (message.messageType === 'POLL') {
+      let pollData = null;
+      try {
+        pollData = typeof message.content === 'object' ? message.content : JSON.parse(message.content);
+      } catch (e) {
+        pollData = null;
+      }
+
+      if (!pollData) return <div>{message.content}</div>;
+
+      const totalVotes = (pollData.options || []).reduce((acc, opt) => acc + (opt.voters ? opt.voters.length : 0), 0);
+
+      const handleVote = async (optionId) => {
+        const myName = currentUser?.username;
+        if (!myName) return;
+
+        const updatedOptions = pollData.options.map(opt => {
+          const hasVoted = opt.voters && opt.voters.includes(myName);
+          if (opt.id === optionId) {
+            return {
+              ...opt,
+              voters: hasVoted ? opt.voters.filter(u => u !== myName) : [...(opt.voters || []), myName]
+            };
+          } else {
+            return pollData.allowMultiple ? opt : {
+              ...opt,
+              voters: (opt.voters || []).filter(u => u !== myName)
+            };
+          }
+        });
+
+        const newPollData = { ...pollData, options: updatedOptions };
+        if (message.id) {
+          apiFetch(`/api/messages/poll-vote/${message.id}`, {
+            method: 'POST',
+            body: JSON.stringify({ pollContent: JSON.stringify(newPollData) })
+          }).catch(console.error);
+        }
+      };
+
+      return (
+        <div style={{ minWidth: '240px', maxWidth: '320px', padding: '4px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <BarChart2 size={18} color="#00a884" />
+            <span style={{ fontSize: '15px', fontWeight: 700, color: '#e9edef' }}>{pollData.question}</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#8696a0', marginBottom: '12px' }}>
+            {pollData.allowMultiple ? 'Select one or more' : 'Select one'}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {pollData.options.map(opt => {
+              const count = opt.voters ? opt.voters.length : 0;
+              const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+              const hasVoted = opt.voters && opt.voters.includes(currentUser?.username);
+
+              return (
+                <div
+                  key={opt.id}
+                  onClick={() => handleVote(opt.id)}
+                  style={{
+                    position: 'relative',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: hasVoted ? '1.5px solid #00a884' : '1px solid #2a3942',
+                    backgroundColor: hasVoted ? 'rgba(0,168,132,0.1)' : '#182229',
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${pct}%`,
+                      backgroundColor: 'rgba(0, 168, 132, 0.25)',
+                      zIndex: 1,
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                  <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: pollData.allowMultiple ? '4px' : '50%',
+                          border: hasVoted ? 'none' : '2px solid #8696a0',
+                          backgroundColor: hasVoted ? '#00a884' : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                        }}
+                      >
+                        {hasVoted && <Check size={12} strokeWidth={3} />}
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#e9edef' }}>{opt.text}</span>
+                    </div>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#8696a0' }}>{count}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: '8px', fontSize: '11px', color: '#8696a0', textAlign: 'right' }}>
+            {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
+          </div>
+        </div>
+      );
+    }
+
     if (!message.mediaUrl) return null;
 
     // View Once
     if (isViewOnce) {
       if (isViewOnceOpened) {
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '8px', margin: '4px 0', color: '#8696a0', fontSize: '13px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: '8px', margin: '4px 0', color: '#8696a0', fontSize: '13px' }}>
             <span style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1px solid #8696a0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>①</span>
-            <span>Opened</span>
+            <span style={{ fontStyle: 'italic' }}>Opened</span>
           </div>
         );
       }
       return (
-        <div onClick={() => !isViewOnceOpened && setIsViewingOnce(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: isMe ? '#004a3c' : '#182229', borderRadius: '8px', margin: '4px 0', cursor: 'pointer', border: '1px solid #00a884' }}>
-          <span style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#00a884', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700 }}>①</span>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#e9edef' }}>{message.mediaType === 'VIDEO' ? 'Video' : 'Photo'} (View Once)</span>
+        <div
+          onClick={() => !isViewOnceOpened && setIsViewingOnce(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '10px 14px',
+            backgroundColor: isMe ? '#004a3c' : '#182229',
+            borderRadius: '10px',
+            margin: '4px 0',
+            cursor: 'pointer',
+            border: '1.5px solid #00a884',
+            boxShadow: '0 2px 8px rgba(0, 168, 132, 0.15)',
+            transition: 'transform 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
+        >
+          <span style={{
+            width: '26px',
+            height: '26px',
+            borderRadius: '50%',
+            backgroundColor: '#00a884',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '14px',
+            fontWeight: 800,
+            flexShrink: 0,
+          }}>
+            ①
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#e9edef', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {message.mediaType === 'VIDEO' ? 'Video' : 'Photo'} (View Once)
+            </span>
+            <span style={{ fontSize: '11px', color: '#8696a0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Lock size={10} color="#00a884" />
+              {isMe ? 'Sent • Screenshot protected' : 'Tap to view • Screenshot blocked'}
+            </span>
+          </div>
         </div>
       );
     }
@@ -291,6 +526,10 @@ export default function MessageBubble({ message, currentUser, onReply }) {
     );
   }
 
+  if (isVanishMode && isSeen && vanishCountdown === 0) {
+    return null;
+  }
+
   // Sticker: no bubble background, transparent
   const noBackground = isSticker;
 
@@ -345,6 +584,11 @@ export default function MessageBubble({ message, currentUser, onReply }) {
               style={{ background: 'transparent', border: 'none', color: '#8696a0', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}>
               <Reply size={14} />
             </button>
+            {/* Forward */}
+            <button onClick={() => { setShowForwardModal(true); setShowToolbar(false); }} title="Forward"
+              style={{ background: 'transparent', border: 'none', color: '#8696a0', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}>
+              <CornerUpRight size={14} />
+            </button>
             {/* Copy */}
             {!isVoice && !isGif && !isSticker && (
               <button onClick={handleCopy} title="Copy"
@@ -354,7 +598,7 @@ export default function MessageBubble({ message, currentUser, onReply }) {
             )}
             {/* Edit (own text msgs) */}
             {isMe && !isVoice && !isGif && !isSticker && !isViewOnce && (
-              <button onClick={() => { setIsEditing(!isEditing); setShowToolbar(true); }} title="Edit"
+              <button onClick={() => { setIsEditing(!isEditing); setEditText(displayText); setShowToolbar(true); }} title="Edit"
                 style={{ background: 'transparent', border: 'none', color: isEditing ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}>
                 <Edit2 size={13} />
               </button>
@@ -380,8 +624,10 @@ export default function MessageBubble({ message, currentUser, onReply }) {
         )}
 
         {/* ── Message Bubble Card ── */}
-        <div style={{
-          padding: noBackground ? '0' : '8px 12px',
+        <div
+          className="message-bubble-card"
+          style={{
+            padding: noBackground ? '0' : '8px 12px',
           borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
           backgroundColor: noBackground ? 'transparent' : isMe ? '#005c4b' : '#202c33',
           color: '#e9edef',
@@ -390,8 +636,10 @@ export default function MessageBubble({ message, currentUser, onReply }) {
           wordBreak: 'break-word',
         }}>
           {/* Sender name in groups */}
-          {!isMe && message.senderUsername && message.groupId && (
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#00a884', marginBottom: '2px' }}>~{message.senderUsername}</div>
+          {!isMe && (message.senderUsername || message.sender?.username) && (selectedContact?.isGroup || message.groupId || message.group?.id) && (
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#00a884', marginBottom: '2px' }}>
+              ~{message.senderUsername || message.sender?.username}
+            </div>
           )}
 
           {/* Quoted reply */}
@@ -416,9 +664,9 @@ export default function MessageBubble({ message, currentUser, onReply }) {
               </div>
             </div>
           ) : (
-            !noBackground && !isViewOnce && (message.content || message.text) && (
+            !noBackground && !isViewOnce && message.messageType !== 'POLL' && (displayText || message.content || message.text) && (
               <p style={{ fontSize: '14px', margin: 0, lineHeight: '1.4', fontStyle: isDeleted ? 'italic' : 'normal', color: isDeleted ? '#8696a0' : '#e9edef' }}>
-                {renderLinkedText(message.content || message.text)}
+                {renderLinkedText(displayText || message.content || message.text)}
               </p>
             )
           )}
@@ -429,6 +677,26 @@ export default function MessageBubble({ message, currentUser, onReply }) {
               {message.isEdited && <span style={{ fontSize: '10px', fontStyle: 'italic' }}>Edited</span>}
               {isPinned && <Pin size={11} color="#00a884" />}
               {isStarred && <Star size={11} color="#f59e0b" fill="#f59e0b" />}
+              {isVanishMode && isSeen && vanishCountdown !== null && vanishCountdown > 0 && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    color: vanishCountdown <= 5 ? '#ef4444' : '#f59e0b',
+                    backgroundColor: vanishCountdown <= 5 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    marginRight: '2px',
+                  }}
+                  title={`Vanishes ${vanishCountdown}s after being read`}
+                >
+                  <Flame size={10} color={vanishCountdown <= 5 ? '#ef4444' : '#f59e0b'} />
+                  {vanishCountdown}s
+                </span>
+              )}
               <span>{time}</span>
               {renderStatus()}
             </div>
@@ -445,21 +713,37 @@ export default function MessageBubble({ message, currentUser, onReply }) {
         )}
       </div>
 
-      {/* Full-Screen View Once Viewer */}
-      {isViewingOnce && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: '#000', zIndex: 99999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', userSelect: 'none' }}>
-          <div style={{ position: 'absolute', top: '20px', left: '24px', color: '#00a884', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Lock size={16} /> View Once Protected Media
-          </div>
-          <button onClick={() => { setIsViewingOnce(false); markViewOnceOpened(message.id); }}
-            style={{ position: 'absolute', top: '20px', right: '24px', padding: '8px 16px', backgroundColor: '#00a884', color: '#fff', border: 'none', borderRadius: '20px', fontWeight: 600, cursor: 'pointer' }}>
-            Close (Permanently vanishes)
-          </button>
-          {message.mediaType === 'VIDEO'
-            ? <video src={message.mediaUrl} controls autoPlay style={{ maxWidth: '90vw', maxHeight: '80vh', objectFit: 'contain' }} />
-            : <img src={message.mediaUrl} alt="View Once" style={{ maxWidth: '90vw', maxHeight: '80vh', objectFit: 'contain' }} />}
-        </div>
-      )}
+      {/* WhatsApp-Style Screenshot Restricted View Once Modal */}
+      <ViewOnceModal
+        isOpen={isViewingOnce}
+        mediaUrl={message.mediaUrl}
+        mediaType={message.mediaType}
+        currentUser={currentUser}
+        senderUsername={message.senderUsername || message.sender?.username}
+        onClose={() => {
+          setIsViewingOnce(false);
+          markViewOnceOpened(message.id);
+        }}
+      />
+
+      {/* Forward Modal */}
+      <ForwardModal
+        isOpen={showForwardModal}
+        onClose={() => setShowForwardModal(false)}
+        message={message}
+        contacts={contacts}
+        onForward={async (targets, msg) => {
+          for (const target of targets) {
+            sendMessage(displayText || msg.content || msg.text, {
+              mediaUrl: msg.mediaUrl,
+              mediaType: msg.mediaType,
+              messageType: msg.messageType,
+              isForwarded: true,
+              targetContact: target,
+            });
+          }
+        }}
+      />
     </div>
   );
 }
