@@ -37,6 +37,7 @@ public class ChatGroupService {
                 .avatar(avatar == null || avatar.trim().isEmpty() ? "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=100" : avatar)
                 .createdBy(creator)
                 .members(members)
+                .admins(new HashSet<>(List.of(creator)))
                 .build();
 
         return chatGroupRepository.save(group);
@@ -57,7 +58,10 @@ public class ChatGroupService {
         ChatGroup group = chatGroupRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with ID: " + id));
 
-        boolean isAdmin = group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(currentUsername);
+        boolean isAdmin = group.getAdmins().stream().anyMatch(a -> a.getUsername().equalsIgnoreCase(currentUsername));
+        if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(currentUsername)) {
+            isAdmin = true;
+        }
 
         List<Map<String, Object>> memberList = group.getMembers().stream().map(m -> {
             Map<String, Object> map = new HashMap<>();
@@ -66,7 +70,10 @@ public class ChatGroupService {
             map.put("phoneNumber", m.getPhoneNumber());
             map.put("profilePicUrl", m.getProfilePicUrl());
             map.put("about", m.getAbout());
-            boolean isThisAdmin = group.getCreatedBy() != null && group.getCreatedBy().getId().equals(m.getId());
+            boolean isThisAdmin = group.getAdmins().stream().anyMatch(a -> a.getId().equals(m.getId()));
+            if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getId().equals(m.getId())) {
+                isThisAdmin = true;
+            }
             map.put("isAdmin", isThisAdmin);
             map.put("isYou", m.getUsername().equalsIgnoreCase(currentUsername));
             return map;
@@ -87,7 +94,38 @@ public class ChatGroupService {
         res.put("isAdmin", isAdmin);
         res.put("members", memberList);
         res.put("memberCount", memberList.size());
+        res.put("onlyAdminsCanMessage", group.isOnlyAdminsCanMessage());
+        res.put("onlyAdminsCanCall", group.isOnlyAdminsCanCall());
+        res.put("onlyAdminsCanAddMembers", group.isOnlyAdminsCanAddMembers());
         return res;
+    }
+
+    @Transactional
+    public Map<String, Object> updateGroupSettings(Long groupId, Map<String, Object> settings, String requesterUsername) {
+        ChatGroup group = chatGroupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Group not found with ID: " + groupId));
+
+        boolean isAdmin = group.getAdmins().stream().anyMatch(a -> a.getUsername().equalsIgnoreCase(requesterUsername));
+        if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername)) {
+            isAdmin = true;
+        }
+
+        if (!isAdmin) {
+            throw new IllegalStateException("Only group admins can change group settings");
+        }
+
+        if (settings.containsKey("onlyAdminsCanMessage")) {
+            group.setOnlyAdminsCanMessage((Boolean) settings.get("onlyAdminsCanMessage"));
+        }
+        if (settings.containsKey("onlyAdminsCanCall")) {
+            group.setOnlyAdminsCanCall((Boolean) settings.get("onlyAdminsCanCall"));
+        }
+        if (settings.containsKey("onlyAdminsCanAddMembers")) {
+            group.setOnlyAdminsCanAddMembers((Boolean) settings.get("onlyAdminsCanAddMembers"));
+        }
+
+        chatGroupRepository.save(group);
+        return getGroupDetails(groupId, requesterUsername);
     }
 
     @Transactional
@@ -98,6 +136,15 @@ public class ChatGroupService {
         boolean isMember = group.getMembers().stream().anyMatch(m -> m.getUsername().equalsIgnoreCase(requesterUsername));
         if (!isMember) {
             throw new IllegalStateException("You must be a member of the group to add participants");
+        }
+
+        boolean isAdmin = group.getAdmins().stream().anyMatch(a -> a.getUsername().equalsIgnoreCase(requesterUsername));
+        if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername)) {
+            isAdmin = true;
+        }
+
+        if (group.isOnlyAdminsCanAddMembers() && !isAdmin) {
+            throw new IllegalStateException("Only group admins can add members to this group");
         }
 
         if (newMemberIdentifiers != null) {
@@ -118,7 +165,10 @@ public class ChatGroupService {
         User targetUser = resolveUser(targetIdentifier)
                 .orElseThrow(() -> new IllegalArgumentException("Target user not found: " + targetIdentifier));
 
-        boolean isRequesterAdmin = group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername);
+        boolean isRequesterAdmin = group.getAdmins().stream().anyMatch(a -> a.getUsername().equalsIgnoreCase(requesterUsername));
+        if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername)) {
+            isRequesterAdmin = true;
+        }
         boolean isSelf = targetUser.getUsername().equalsIgnoreCase(requesterUsername);
 
         if (!isRequesterAdmin && !isSelf) {
@@ -126,6 +176,7 @@ public class ChatGroupService {
         }
 
         group.getMembers().removeIf(m -> m.getId().equals(targetUser.getId()) || m.getUsername().equalsIgnoreCase(targetUser.getUsername()));
+        group.getAdmins().removeIf(m -> m.getId().equals(targetUser.getId()) || m.getUsername().equalsIgnoreCase(targetUser.getUsername()));
         chatGroupRepository.save(group);
         return getGroupDetails(groupId, requesterUsername);
     }
@@ -136,14 +187,68 @@ public class ChatGroupService {
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with ID: " + groupId));
 
         group.getMembers().removeIf(m -> m.getUsername().equalsIgnoreCase(requesterUsername));
+        group.getAdmins().removeIf(m -> m.getUsername().equalsIgnoreCase(requesterUsername));
 
-        if (group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername)) {
-            if (!group.getMembers().isEmpty()) {
-                group.setCreatedBy(group.getMembers().iterator().next());
-            }
+        if (group.getAdmins().isEmpty() && !group.getMembers().isEmpty()) {
+            User nextAdmin = group.getMembers().iterator().next();
+            group.getAdmins().add(nextAdmin);
+            group.setCreatedBy(nextAdmin); // also update createdBy just in case
         }
 
         chatGroupRepository.save(group);
+    }
+
+    @Transactional
+    public Map<String, Object> promoteToAdmin(Long groupId, Object targetIdentifier, String requesterUsername) {
+        ChatGroup group = chatGroupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Group not found with ID: " + groupId));
+
+        boolean isRequesterAdmin = group.getAdmins().stream().anyMatch(a -> a.getUsername().equalsIgnoreCase(requesterUsername));
+        if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername)) {
+            isRequesterAdmin = true;
+        }
+
+        if (!isRequesterAdmin) {
+            throw new IllegalStateException("Only group admins can promote other members");
+        }
+
+        User targetUser = resolveUser(targetIdentifier)
+                .orElseThrow(() -> new IllegalArgumentException("Target user not found: " + targetIdentifier));
+
+        boolean isMember = group.getMembers().stream().anyMatch(m -> m.getId().equals(targetUser.getId()));
+        if (!isMember) {
+            throw new IllegalStateException("Target user is not a member of this group");
+        }
+
+        group.getAdmins().add(targetUser);
+        chatGroupRepository.save(group);
+        return getGroupDetails(groupId, requesterUsername);
+    }
+
+    @Transactional
+    public Map<String, Object> demoteFromAdmin(Long groupId, Object targetIdentifier, String requesterUsername) {
+        ChatGroup group = chatGroupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Group not found with ID: " + groupId));
+
+        boolean isRequesterAdmin = group.getAdmins().stream().anyMatch(a -> a.getUsername().equalsIgnoreCase(requesterUsername));
+        if (group.getAdmins().isEmpty() && group.getCreatedBy() != null && group.getCreatedBy().getUsername().equalsIgnoreCase(requesterUsername)) {
+            isRequesterAdmin = true;
+        }
+
+        if (!isRequesterAdmin) {
+            throw new IllegalStateException("Only group admins can demote other admins");
+        }
+
+        User targetUser = resolveUser(targetIdentifier)
+                .orElseThrow(() -> new IllegalArgumentException("Target user not found: " + targetIdentifier));
+
+        if (group.getAdmins().size() <= 1 && group.getAdmins().stream().anyMatch(a -> a.getId().equals(targetUser.getId()))) {
+            throw new IllegalStateException("Cannot demote the only admin of the group");
+        }
+
+        group.getAdmins().removeIf(a -> a.getId().equals(targetUser.getId()));
+        chatGroupRepository.save(group);
+        return getGroupDetails(groupId, requesterUsername);
     }
 
     private Optional<User> resolveUser(Object item) {

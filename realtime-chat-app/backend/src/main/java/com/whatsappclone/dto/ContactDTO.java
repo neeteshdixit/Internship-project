@@ -3,6 +3,7 @@ package com.whatsappclone.dto;
 public class ContactDTO {
     private Long id; // Contact record ID
     private Long contactUserId; // User ID of the contact
+    private String username;
     private String name;
     private String avatar;
     private String customName;
@@ -14,14 +15,16 @@ public class ContactDTO {
     private boolean isArchived;
     private boolean isMuted;
     private String label;
+    private String lastMessageTimestamp;
 
     // constructors
     public ContactDTO() {}
 
-    public ContactDTO(Long id, Long contactUserId, String name, String avatar, String customName, String phoneNumber, boolean isOnline,
-                      boolean isFavorite, boolean isBlocked, boolean isPinned, boolean isArchived, boolean isMuted, String label) {
+    public ContactDTO(Long id, Long contactUserId, String username, String name, String avatar, String customName, String phoneNumber, boolean isOnline,
+                      boolean isFavorite, boolean isBlocked, boolean isPinned, boolean isArchived, boolean isMuted, String label, String lastMessageTimestamp) {
         this.id = id;
         this.contactUserId = contactUserId;
+        this.username = username;
         this.name = name;
         this.avatar = avatar;
         this.customName = customName;
@@ -33,6 +36,7 @@ public class ContactDTO {
         this.isArchived = isArchived;
         this.isMuted = isMuted;
         this.label = label;
+        this.lastMessageTimestamp = lastMessageTimestamp;
     }
 
     // getters & setters
@@ -40,6 +44,8 @@ public class ContactDTO {
     public void setId(Long id) { this.id = id; }
     public Long getContactUserId() { return contactUserId; }
     public void setContactUserId(Long contactUserId) { this.contactUserId = contactUserId; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getAvatar() { return avatar; }
@@ -62,4 +68,6 @@ public class ContactDTO {
     public void setMuted(boolean muted) { isMuted = muted; }
     public String getLabel() { return label; }
     public void setLabel(String label) { this.label = label; }
+    public String getLastMessageTimestamp() { return lastMessageTimestamp; }
+    public void setLastMessageTimestamp(String lastMessageTimestamp) { this.lastMessageTimestamp = lastMessageTimestamp; }
 }

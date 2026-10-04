@@ -83,7 +83,7 @@ public class MessageController {
                             "/topic/messages/" + member.getUsername(), 
                             response
                     );
-                    if (!member.getUsername().equalsIgnoreCase(member.getUsername())) {
+                    if (!member.getUsername().equals(member.getUsername().toLowerCase())) {
                         messagingTemplate.convertAndSend(
                                 "/topic/messages/" + member.getUsername().toLowerCase(), 
                                 response
@@ -117,7 +117,10 @@ public class MessageController {
     @GetMapping("/api/messages/group/{groupId}")
     public ResponseEntity<List<MessageResponseDto>> getGroupMessagesDirect(@PathVariable Long groupId) {
         List<Message> messages = messageService.getGroupChatHistory(groupId);
-        List<MessageResponseDto> dtos = messages.stream().map(msg -> MessageResponseDto.builder()
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        List<MessageResponseDto> dtos = messages.stream()
+                .filter(msg -> msg.getExpiresAt() == null || msg.getExpiresAt().isAfter(now))
+                .map(msg -> MessageResponseDto.builder()
                 .id(msg.getId())
                 .senderUsername(msg.getSender().getUsername())
                 .receiverUsername(null)
@@ -205,7 +208,9 @@ public class MessageController {
         }
 
         final boolean finalShowReadReceipts = showReadReceipts;
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
         List<MessageResponseDto> responseDtos = messages.stream()
+                .filter(msg -> msg.getExpiresAt() == null || msg.getExpiresAt().isAfter(now))
                 .map(msg -> MessageResponseDto.builder()
                         .id(msg.getId())
                         .senderUsername(msg.getSender().getUsername())

@@ -103,6 +103,41 @@ public class ChatGroupController {
         }
     }
 
+    @PutMapping("/{id}/settings")
+    public ResponseEntity<?> updateGroupSettings(@PathVariable Long id, @RequestBody Map<String, Object> settings, Principal principal) {
+        try {
+            Map<String, Object> details = chatGroupService.updateGroupSettings(id, settings, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/admins")
+    public ResponseEntity<?> promoteToAdmin(@PathVariable Long id, @RequestBody Map<String, Object> request, Principal principal) {
+        try {
+            Object memberId = request.get("memberId");
+            if (memberId == null) memberId = request.get("username");
+            if (memberId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Member identifier required"));
+            }
+            Map<String, Object> details = chatGroupService.promoteToAdmin(id, memberId, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{id}/admins/{identifier}")
+    public ResponseEntity<?> demoteFromAdmin(@PathVariable Long id, @PathVariable String identifier, Principal principal) {
+        try {
+            Map<String, Object> details = chatGroupService.demoteFromAdmin(id, identifier, principal.getName());
+            return ResponseEntity.ok(details);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @GetMapping
     public ResponseEntity<List<ChatGroup>> getGroups(Principal principal) {
         List<ChatGroup> groups = chatGroupService.getGroupsForUser(principal.getName());
@@ -111,6 +146,10 @@ public class ChatGroupController {
             if (lastMsg != null) {
                 g.setLastMessage(lastMsg.getContent());
                 g.setLastMessageTimestamp(lastMsg.getTimestamp().toString());
+            }
+            // Migrate legacy groups: if admins is empty, treat createdBy as admin
+            if (g.getAdmins().isEmpty() && g.getCreatedBy() != null) {
+                g.getAdmins().add(g.getCreatedBy());
             }
         }
         return ResponseEntity.ok(groups);

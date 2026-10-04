@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useUI } from '../../context/UIContext';
-import { Lock, Search, X, Shield, ShieldCheck, AlertTriangle, EyeOff, ShieldAlert, Pin, Users, UserPlus } from 'lucide-react';
+import { Lock, Search, X, Shield, ShieldCheck, AlertTriangle, EyeOff, ShieldAlert, Pin, Users, UserPlus, ChevronDown } from 'lucide-react';
 import ChatHeader from '../chat/ChatHeader';
 import MessageList from '../chat/MessageList';
 import ChatInput from '../chat/ChatInput';
@@ -19,9 +19,13 @@ export default function ChatWindow() {
   const [wallpaper, setWallpaper] = useState(localStorage.getItem('chat_wallpaper') || 'default');
   const [isBlurred, setIsBlurred] = useState(false);
   const [localScreenshotWarning, setLocalScreenshotWarning] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [newMessagesWhileScrolled, setNewMessagesWhileScrolled] = useState(0);
 
   const messagesEndRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const lastAlertTimeRef = useRef(0);
+  const previousMessagesLengthRef = useRef(0);
 
   // Vanish Mode is active for this conversation?
   const isVanishActive = !!selectedContact?.vanishMode;
@@ -166,9 +170,34 @@ export default function ChatWindow() {
     setReplyMessage(null);
   };
 
-  useEffect(() => {
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+    
+    setShowScrollBottom(!isAtBottom);
+    if (isAtBottom) {
+      setNewMessagesWhileScrolled(0);
+    }
+  };
+
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [rawChatMessages]);
+    setNewMessagesWhileScrolled(0);
+  };
+
+  useEffect(() => {
+    const isAtBottom = !showScrollBottom;
+    const prevLen = previousMessagesLengthRef.current;
+    const currentLen = rawChatMessages.length;
+    
+    if (isAtBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else if (currentLen > prevLen) {
+      setNewMessagesWhileScrolled(prev => prev + (currentLen - prevLen));
+    }
+    previousMessagesLengthRef.current = currentLen;
+  }, [rawChatMessages, showScrollBottom]);
 
   const WALLPAPER_BG = {
     default: '#0b141a',
@@ -298,7 +327,11 @@ export default function ChatWindow() {
       )}
 
       {/* 3. Messages List Area */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}
+      >
         {/* Subtle Watermark in Vanish Mode */}
         {isVanishActive && (
           <div
@@ -502,6 +535,49 @@ export default function ChatWindow() {
         />
         <div ref={messagesEndRef} />
       </div>
+      
+      {/* Scroll to Bottom FAB */}
+      {showScrollBottom && (
+        <button
+          onClick={scrollToBottom}
+          style={{
+            position: 'absolute',
+            bottom: replyMessage ? '130px' : '80px',
+            right: '20px',
+            width: '42px',
+            height: '42px',
+            borderRadius: '50%',
+            backgroundColor: '#202c33',
+            border: 'none',
+            color: '#aebac1',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+            zIndex: 100,
+            transition: 'bottom 0.2s',
+          }}
+          title="Scroll to bottom"
+        >
+          <ChevronDown size={24} />
+          {newMessagesWhileScrolled > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-5px',
+              right: '-5px',
+              backgroundColor: '#00a884',
+              color: '#111b21',
+              fontSize: '11px',
+              fontWeight: 700,
+              borderRadius: '10px',
+              padding: '2px 6px',
+            }}>
+              {newMessagesWhileScrolled}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* 4. Chat Input */}
       <ChatInput

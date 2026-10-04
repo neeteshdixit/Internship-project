@@ -204,11 +204,21 @@ export function CallProvider({ children }) {
 
     // Notify peer via WebSocket
     if (peer && currentUser?.username) {
-      sendCallSignal({
-        senderUsername: currentUser.username,
-        receiverUsername: peer,
-        type: 'end',
-      });
+      if (currentActive?.isGroup && currentActive.participants) {
+        currentActive.participants.forEach(p => {
+          sendCallSignal({
+            senderUsername: currentUser.username,
+            receiverUsername: p,
+            type: 'end',
+          });
+        });
+      } else {
+        sendCallSignal({
+          senderUsername: currentUser.username,
+          receiverUsername: peer,
+          type: 'end',
+        });
+      }
     }
 
     // Persist to server
@@ -268,17 +278,29 @@ export function CallProvider({ children }) {
     setIncomingCall(null);
   }, [currentUser, sendCallSignal, persistCallRecord, cleanupMediaAndPeer, setCallHistory]);
 
+  // Ignore Incoming Call (Hide overlay, stop ringing, keep available to join)
+  const ignoreCall = useCallback(() => {
+    toneGenerator.stop();
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
+    setIncomingCall(prev => prev ? { ...prev, isIgnored: true } : null);
+  }, []);
+
   // Create & Setup RTCPeerConnection
-  const createPeerConnection = useCallback((peerUsername) => {
+  const createPeerConnection = useCallback((participants) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
     pc.onicecandidate = (event) => {
       if (event.candidate && currentUser?.username) {
-        sendCallSignal({
-          senderUsername: currentUser.username,
-          receiverUsername: peerUsername,
-          type: 'candidate',
-          candidate: event.candidate,
+        participants.forEach(peer => {
+          sendCallSignal({
+            senderUsername: currentUser.username,
+            receiverUsername: peer,
+            type: 'candidate',
+            candidate: event.candidate,
+          });
         });
       }
     };
@@ -341,10 +363,15 @@ export function CallProvider({ children }) {
     const normalizedCallType = callType.toUpperCase();
 
     // Check if target user is online
-    const isTargetOnline = onlineUsers && (
-      onlineUsers.has(receiverUsername.toLowerCase()) ||
-      onlineUsers.has(receiverUsername)
-    );
+    let isTargetOnline = false;
+    if (options.isGroup && options.participants) {
+      isTargetOnline = options.participants.some(p => onlineUsers?.has(p.toLowerCase()));
+    } else {
+      isTargetOnline = onlineUsers && (
+        onlineUsers.has(receiverUsername.toLowerCase()) ||
+        onlineUsers.has(receiverUsername)
+      );
+    }
 
     if (!isTargetOnline) {
       // Receiver is offline: show notification & persist missed/offline call record
@@ -371,6 +398,8 @@ export function CallProvider({ children }) {
       return;
     }
 
+    const participants = options.isGroup && options.participants ? options.participants : [receiverUsername];
+
     const callObj = {
       otherUser: receiverUsername,
       callType: normalizedCallType,
@@ -379,6 +408,7 @@ export function CallProvider({ children }) {
       startedAt: new Date().toISOString(),
       groupName: options.groupName || null,
       isGroup: !!options.isGroup,
+      participants: participants,
     };
     setActiveCall(callObj);
     setCallStatusMessage(options.groupName ? `Calling in ${options.groupName}...` : `Calling @${receiverUsername}...`);
@@ -394,7 +424,7 @@ export function CallProvider({ children }) {
     }
 
     // 2. Setup PeerConnection
-    const pc = createPeerConnection(receiverUsername);
+    const pc = createPeerConnection(participants);
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
     // 3. Create Offer
@@ -405,13 +435,17 @@ export function CallProvider({ children }) {
       });
       await pc.setLocalDescription(offer);
 
-      // 4. Send Offer Signal via WebSocket
-      sendCallSignal({
-        senderUsername: currentUser.username,
-        receiverUsername: receiverUsername,
-        type: 'offer',
-        callType: normalizedCallType,
-        sdp: offer.sdp,
+      // 4. Send Offer Signal via WebSocket to ALL participants
+      participants.forEach(peer => {
+        sendCallSignal({
+          senderUsername: currentUser.username,
+          receiverUsername: peer,
+          type: 'offer',
+          callType: normalizedCallType,
+          sdp: offer.sdp,
+          isGroup: options.isGroup,
+          groupName: options.groupName,
+        });
       });
 
       // 5. Timeout after 35s if no answer
@@ -455,7 +489,8 @@ export function CallProvider({ children }) {
     const stream = await getMediaStream(callType);
 
     // 2. Setup PeerConnection
-    const pc = createPeerConnection(caller);
+    const participants = inc.isGroup && inc.participants ? inc.participants : [caller];
+    const pc = createPeerConnection(participants);
     if (stream) {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
     }
@@ -519,6 +554,8 @@ export function CallProvider({ children }) {
             caller: sender,
             callType: (signal.callType || 'AUDIO').toUpperCase(),
             sdp: signal.sdp,
+            isGroup: signal.isGroup,
+            groupName: signal.groupName,
           });
 
           toneGenerator.playIncomingRingtone();
@@ -539,10 +576,34 @@ export function CallProvider({ children }) {
             ringTimeoutRef.current = null;
           }
 
+          if (activeCallRef.current?.status === 'CONNECTED') {
+            sendCallSignal({
+              senderUsername: currentUser.username,
+              receiverUsername: sender,
+              type: 'busy',
+            });
+            break;
+          }
+
           if (pcRef.current && signal.sdp) {
             try {
               await pcRef.current.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
-              setActiveCall((prev) => prev ? { ...prev, status: 'CONNECTED' } : null);
+              setActiveCall((prev) => {
+                const next = prev ? { ...prev, status: 'CONNECTED', otherUser: sender } : null;
+                // If it's a group call, send cancel to others so they stop ringing
+                if (next && next.isGroup && next.participants) {
+                  next.participants.forEach(p => {
+                    if (p.toLowerCase() !== sender.toLowerCase() && p.toLowerCase() !== currentUser.username.toLowerCase()) {
+                      sendCallSignal({
+                        senderUsername: currentUser.username,
+                        receiverUsername: p,
+                        type: 'end',
+                      });
+                    }
+                  });
+                }
+                return next;
+              });
               setCallStatusMessage('Connected');
 
               // Flush pending candidates
@@ -575,6 +636,14 @@ export function CallProvider({ children }) {
         }
 
         case 'reject': {
+          if (activeCallRef.current?.isGroup && activeCallRef.current?.participants) {
+            const remaining = activeCallRef.current.participants.filter(p => p.toLowerCase() !== sender.toLowerCase());
+            activeCallRef.current.participants = remaining;
+            if (remaining.length > 0) {
+              // Still ringing others, ignore this reject
+              break;
+            }
+          }
           toneGenerator.stop();
           setCallStatusMessage('Call declined');
           setTimeout(() => {
@@ -586,6 +655,14 @@ export function CallProvider({ children }) {
         }
 
         case 'busy': {
+          if (activeCallRef.current?.isGroup && activeCallRef.current?.participants) {
+            const remaining = activeCallRef.current.participants.filter(p => p.toLowerCase() !== sender.toLowerCase());
+            activeCallRef.current.participants = remaining;
+            if (remaining.length > 0) {
+              // Still ringing others, ignore this busy
+              break;
+            }
+          }
           toneGenerator.stop();
           setCallStatusMessage('User is busy on another call');
           setTimeout(() => {
@@ -620,9 +697,9 @@ export function CallProvider({ children }) {
   // Listen for 'start_call' global event dispatched by ChatHeader
   useEffect(() => {
     const handleStartCallEvent = (e) => {
-      const { receiver, callType, groupName, isGroup } = e.detail || {};
+      const { receiver, callType, groupName, isGroup, participants } = e.detail || {};
       if (!receiver) return;
-      initiateCall(receiver, callType || 'AUDIO', { groupName, isGroup });
+      initiateCall(receiver, callType || 'AUDIO', { groupName, isGroup, participants });
     };
 
     window.addEventListener('start_call', handleStartCallEvent);
@@ -686,6 +763,7 @@ export function CallProvider({ children }) {
         initiateCall,
         acceptCall,
         rejectCall,
+        ignoreCall,
         endCall,
         isMicMuted,
         toggleMic,

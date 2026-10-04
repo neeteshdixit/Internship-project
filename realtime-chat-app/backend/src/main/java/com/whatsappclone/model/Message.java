@@ -86,6 +86,9 @@ public class Message {
         if (messageType == null) {
             messageType = "TEXT";
         }
+        if (selfDestructSeconds != null && selfDestructSeconds > 0) {
+            expiresAt = timestamp.plusSeconds(selfDestructSeconds);
+        }
     }
 
     // Explicit Getters and Setters for Guaranteed Compilation

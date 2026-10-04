@@ -1,11 +1,11 @@
 import React from 'react';
-import { Phone, PhoneOff, Video } from 'lucide-react';
+import { Phone, PhoneOff, Video, BellOff } from 'lucide-react';
 import { useCall } from '../../context/CallContext';
 
 export default function IncomingCallOverlay() {
-  const { incomingCall, acceptCall, rejectCall } = useCall();
+  const { incomingCall, acceptCall, rejectCall, ignoreCall } = useCall();
 
-  if (!incomingCall) return null;
+  if (!incomingCall || incomingCall.isIgnored) return null;
 
   const isVideo = incomingCall.callType === 'VIDEO';
 
@@ -83,6 +83,31 @@ export default function IncomingCallOverlay() {
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '36px' }}>
+          {/* Ignore Button */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={ignoreCall}
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                backgroundColor: '#3b4a54',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
+                transition: 'transform 0.15s ease',
+              }}
+              title="Ignore"
+            >
+              <BellOff size={24} />
+            </button>
+            <span style={{ color: '#8696a0', fontSize: '12px' }}>Ignore</span>
+          </div>
+
           {/* Decline Button */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
             <button

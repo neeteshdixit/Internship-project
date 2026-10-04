@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Smile, Mic, X, MapPin, Image, FileText, Clock, Trash2, Sticker, BarChart2 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
+import { useAuth } from '../../context/AuthContext';
 import CreatePollModal from './CreatePollModal';
 
 const EMOJI_LIST = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','💩','👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾','👋','🤚','🖐','✋','👌','✌️','🤞','🤙','👍','👎','✊','👊','👏','🙌','🙏','💪','❤️','🧡','💛','💚','💙','💜','🖤','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','✨','⭐','🎉','🎊','🎈','🎁','🏆','🥇','🎯','💯','🆕','🆒','🆓'];
@@ -151,6 +152,7 @@ function StickerPicker({ onSelect, onClose }) {
 
 export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }) {
   const { sendTypingSignal, uploadFile, selectedContact } = useChat();
+  const { currentUser } = useAuth();
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
@@ -339,6 +341,19 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
 
   const closeAll = () => { setShowEmoji(false); setShowAttach(false); setShowGif(false); setShowStickers(false); };
 
+  const isCurrentUserAdmin = selectedContact?.isGroup && (
+    (selectedContact?.admins || []).some(a => a.username?.toLowerCase() === currentUser?.username?.toLowerCase()) ||
+    ((!selectedContact?.admins || selectedContact?.admins?.length === 0) && selectedContact?.createdBy?.username?.toLowerCase() === currentUser?.username?.toLowerCase())
+  );
+
+  if (selectedContact?.isGroup && selectedContact?.onlyAdminsCanMessage && !isCurrentUserAdmin) {
+    return (
+      <div style={{ padding: '16px', backgroundColor: '#202c33', textAlign: 'center', color: '#8696a0', fontSize: '14px', borderTop: '1px solid #2a3942' }}>
+        Only admins can send messages
+      </div>
+    );
+  }
+
   return (
     <div
       onDragOver={e => e.preventDefault()}
@@ -523,54 +538,56 @@ export default function ChatInput({ onSendMessage, replyMessage, onCancelReply }
       {/* Main Input Bar */}
       {!isRecording && (
         <form onSubmit={handleSend} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px' }}>
-          {/* Emoji */}
-          <button type="button" onClick={() => { setShowEmoji(!showEmoji); setShowAttach(false); setShowGif(false); setShowStickers(false); }} style={{ background: 'transparent', border: 'none', color: showEmoji ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '6px' }}>
-            <Smile size={22} />
-          </button>
+          <>
+              {/* Emoji */}
+              <button type="button" onClick={() => { setShowEmoji(!showEmoji); setShowAttach(false); setShowGif(false); setShowStickers(false); }} style={{ background: 'transparent', border: 'none', color: showEmoji ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '6px' }}>
+                <Smile size={22} />
+              </button>
 
-          {/* GIF Button */}
-          <button type="button" onClick={() => { setShowGif(!showGif); setShowEmoji(false); setShowAttach(false); setShowStickers(false); }}
-            title="Send GIF"
-            style={{ background: showGif ? 'rgba(0,168,132,0.15)' : 'transparent', border: showGif ? '1px solid #00a884' : '1px solid transparent', color: showGif ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '4px 7px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, lineHeight: 1 }}>
-            GIF
-          </button>
+              {/* GIF Button */}
+              <button type="button" onClick={() => { setShowGif(!showGif); setShowEmoji(false); setShowAttach(false); setShowStickers(false); }}
+                title="Send GIF"
+                style={{ background: showGif ? 'rgba(0,168,132,0.15)' : 'transparent', border: showGif ? '1px solid #00a884' : '1px solid transparent', color: showGif ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '4px 7px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, lineHeight: 1 }}>
+                GIF
+              </button>
 
-          {/* Sticker Button */}
-          <button type="button" onClick={() => { setShowStickers(!showStickers); setShowEmoji(false); setShowAttach(false); setShowGif(false); }}
-            title="Send Sticker"
-            style={{ background: showStickers ? 'rgba(0,168,132,0.15)' : 'transparent', border: showStickers ? '1px solid #00a884' : '1px solid transparent', color: showStickers ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '4px 6px', borderRadius: '6px', fontSize: '16px', lineHeight: 1 }}>
-            🎭
-          </button>
+              {/* Sticker Button */}
+              <button type="button" onClick={() => { setShowStickers(!showStickers); setShowEmoji(false); setShowAttach(false); setShowGif(false); }}
+                title="Send Sticker"
+                style={{ background: showStickers ? 'rgba(0,168,132,0.15)' : 'transparent', border: showStickers ? '1px solid #00a884' : '1px solid transparent', color: showStickers ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '4px 6px', borderRadius: '6px', fontSize: '16px', lineHeight: 1 }}>
+                🎭
+              </button>
 
-          {/* Attach */}
-          <button type="button" onClick={() => { setShowAttach(!showAttach); setShowEmoji(false); setShowGif(false); setShowStickers(false); }} style={{ background: 'transparent', border: 'none', color: showAttach ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '6px' }}>
-            <Paperclip size={22} />
-          </button>
+              {/* Attach */}
+              <button type="button" onClick={() => { setShowAttach(!showAttach); setShowEmoji(false); setShowGif(false); setShowStickers(false); }} style={{ background: 'transparent', border: 'none', color: showAttach ? '#00a884' : '#8696a0', cursor: 'pointer', padding: '6px' }}>
+                <Paperclip size={22} />
+              </button>
 
-          {/* Text Input */}
-          <input
-            type="text"
-            placeholder={isUploading ? 'Uploading...' : 'Type a message...'}
-            value={text}
-            disabled={isUploading}
-            maxLength={4000}
-            onPaste={handlePaste}
-            onChange={handleInputChange}
-            onFocus={closeAll}
-            style={{ flex: 1, padding: '9px 14px', backgroundColor: '#2a3942', border: 'none', borderRadius: '8px', color: '#e9edef', outline: 'none', fontSize: '14px' }}
-          />
+              {/* Text Input */}
+              <input
+                type="text"
+                placeholder={isUploading ? 'Uploading...' : 'Type a message...'}
+                value={text}
+                disabled={isUploading}
+                maxLength={4000}
+                onPaste={handlePaste}
+                onChange={handleInputChange}
+                onFocus={closeAll}
+                style={{ flex: 1, padding: '9px 14px', backgroundColor: '#2a3942', border: 'none', borderRadius: '8px', color: '#e9edef', outline: 'none', fontSize: '14px' }}
+              />
 
-          {/* Send / Mic */}
-          {text.trim() || pendingFile ? (
-            <button type="submit" disabled={isUploading} style={{ background: '#00a884', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', flexShrink: 0 }}>
-              <Send size={17} />
-            </button>
-          ) : (
-            <button type="button" onClick={startRecording} title="Record voice message" style={{ background: 'transparent', border: 'none', color: '#8696a0', cursor: 'pointer', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Mic size={20} />
-            </button>
-          )}
-        </form>
+              {/* Send / Mic */}
+              {text.trim() || pendingFile ? (
+                <button type="submit" disabled={isUploading} style={{ background: '#00a884', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', flexShrink: 0 }}>
+                  <Send size={17} />
+                </button>
+              ) : (
+                <button type="button" onClick={startRecording} title="Record voice message" style={{ background: 'transparent', border: 'none', color: '#8696a0', cursor: 'pointer', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Mic size={20} />
+                </button>
+              )}
+            </>
+          </form>
       )}
 
       {/* Create Poll Modal */}

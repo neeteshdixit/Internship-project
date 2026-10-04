@@ -465,8 +465,16 @@ export const ChatProvider = ({ children }) => {
         const mergedPartners = partnerList
           .filter((p) => p?.username && !contactUsernames.has(p.username.toLowerCase()))
           .map((p) => ({ id: p.contactUserId || p.id, username: p.username, name: p.name || p.username, profilePicUrl: p.profilePicUrl || p.avatar, lastMessage: p.lastMessage, lastMessageTime: p.lastMessageTime }));
-        const mergedGroups = (groupList || []).map((g) => ({ id: g.id, username: null, name: g.name, customName: g.name, isGroup: true, profilePicUrl: g.avatarUrl, members: g.members || [] }));
-        setContacts([...contactList, ...mergedPartners, ...mergedGroups]);
+        const mergedGroups = (groupList || []).map((g) => ({ id: g.id, username: null, name: g.name, customName: g.name, isGroup: true, profilePicUrl: g.avatarUrl || g.avatar, members: g.members || [], admins: g.admins || [], createdBy: g.createdBy, onlyAdminsCanMessage: g.onlyAdminsCanMessage, onlyAdminsCanCall: g.onlyAdminsCanCall, onlyAdminsCanAddMembers: g.onlyAdminsCanAddMembers }));
+        const pinnedChats = new Set(JSON.parse(localStorage.getItem('setu_pinned_chat_ids') || '[]'));
+        const favChats = new Set(JSON.parse(localStorage.getItem('setu_favorite_chat_ids') || '[]'));
+
+        const allContacts = [...contactList, ...mergedPartners, ...mergedGroups].map(c => {
+          const isPin = pinnedChats.has(String(c.id)) || pinnedChats.has(String(c.username)) || !!c.isPinned;
+          const isFav = favChats.has(String(c.id)) || favChats.has(String(c.username)) || !!c.isFavorite;
+          return { ...c, isPinned: isPin, isFavorite: isFav };
+        });
+        setContacts(allContacts);
       } catch (error) { console.error('Failed to fetch contacts:', error); }
     };
     fetchAll();
@@ -970,13 +978,21 @@ export const ChatProvider = ({ children }) => {
 
   const refreshContacts = useCallback(async () => {
     try {
-      const data = await apiFetch('/api/contacts');
+      const [cRes, gRes] = await Promise.allSettled([
+        apiFetch('/api/contacts'),
+        apiFetch('/api/groups'),
+      ]);
+      const data = cRes.status === 'fulfilled' ? (cRes.value || []) : [];
+      const groupList = gRes.status === 'fulfilled' ? (gRes.value || []) : [];
+      
       const pinnedChats = new Set(JSON.parse(localStorage.getItem('setu_pinned_chat_ids') || '[]'));
       const favChats = new Set(JSON.parse(localStorage.getItem('setu_favorite_chat_ids') || '[]'));
 
       setContacts((prev) => {
-        const groups = prev.filter((c) => c.isGroup);
-        const merged = [...(data || []), ...groups].map((c) => {
+        const partners = prev.filter(c => !c.isGroup && !data.some(d => d.id === c.id));
+        const mergedGroups = groupList.map((g) => ({ id: g.id, username: null, name: g.name, customName: g.name, isGroup: true, profilePicUrl: g.avatarUrl, members: g.members || [], admins: g.admins || [], createdBy: g.createdBy, onlyAdminsCanMessage: g.onlyAdminsCanMessage, onlyAdminsCanCall: g.onlyAdminsCanCall, onlyAdminsCanAddMembers: g.onlyAdminsCanAddMembers }));
+        
+        const merged = [...data, ...partners, ...mergedGroups].map((c) => {
           const isPin = pinnedChats.has(String(c.id)) || pinnedChats.has(String(c.username)) || !!c.isPinned;
           const isFav = favChats.has(String(c.id)) || favChats.has(String(c.username)) || !!c.isFavorite;
           return { ...c, isPinned: isPin, isFavorite: isFav };

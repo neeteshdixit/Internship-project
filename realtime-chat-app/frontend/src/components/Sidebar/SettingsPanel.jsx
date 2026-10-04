@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { apiFetch } from '../../lib/apiFetch';
@@ -17,6 +17,7 @@ export default function SettingsPanel() {
   const [fontSize, setFontSize] = useState(localStorage.getItem('chat_fontsize') || 'medium');
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
+  const [secretCode, setSecretCode] = useState(localStorage.getItem('setu_chat_lock_secret_code') || '');
 
   const WALLPAPERS = [
     { id: 'default', name: 'Default Dark', color: '#0b141a' },
@@ -134,6 +135,24 @@ export default function SettingsPanel() {
         <div style={s.section}>
           <div style={s.secTitle}>Privacy & Security</div>
           
+          <div style={s.row}>
+            <div>
+              <div style={s.label}>Locked Chats Secret Code</div>
+              <div style={s.desc}>Hide locked chats unless this code is searched</div>
+            </div>
+            <input 
+              type="text" 
+              value={secretCode}
+              onChange={(e) => {
+                setSecretCode(e.target.value);
+                localStorage.setItem('setu_chat_lock_secret_code', e.target.value);
+                window.dispatchEvent(new Event('secret_code_updated'));
+              }}
+              placeholder="e.g. 1234"
+              style={{ ...s.select, width: '100px', padding: '6px' }}
+            />
+          </div>
+
           <div style={s.row}>
             <div>
               <div style={s.label}>Last Seen Visibility</div>

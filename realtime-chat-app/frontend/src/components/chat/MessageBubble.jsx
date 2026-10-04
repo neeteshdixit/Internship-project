@@ -554,7 +554,7 @@ export default function MessageBubble({ message, currentUser, onReply }) {
             onMouseLeave={handleToolbarLeave}
             style={{
               position: 'absolute',
-              top: '-42px',
+              bottom: '-42px',
               [isMe ? 'right' : 'left']: '0',
               backgroundColor: '#182229',
               borderRadius: '24px',

@@ -1,73 +1,58 @@
-# React + TypeScript + Vite
+# Setu Connect - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the frontend component of **Setu Connect**, an enterprise-grade, privacy-first real-time messaging web application.
 
-Currently, two official plugins are available:
+## 🚀 Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Framework:** React 19
+- **Build Tool:** Vite 8
+- **State Management:** React Context API + `@tanstack/react-query`
+- **Real-Time Engine:** `@stomp/stompjs` and `sockjs-client` (WebSockets)
+- **Styling:** Vanilla CSS with custom CSS variables for dark/light themes (No Tailwind CSS overhead)
+- **Icons:** `lucide-react`
+- **Encryption:** Native Web Crypto API (AES-GCM-256 Client-Side Encryption)
 
-## React Compiler
+## 📦 Key Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Real-Time Chat:** Sub-second message delivery, typing indicators, and read receipts powered by Spring Boot STOMP broker.
+- **WebRTC Calls:** Peer-to-peer Voice and Video calling without a media server.
+- **Multi-Tier AI Integration:** Supports local device AI, local Ollama, and Google Gemini Flash 1.5. Includes privacy transparency reports for all AI actions.
+- **Zero-Knowledge Encryption:** Messages are encrypted locally in the browser before ever touching the network.
+- **Rich Media & Statuses:** 24h disappearing statuses, file sharing, and vanish mode.
 
-## Expanding the ESLint configuration
+## 🛠️ Setup Instructions
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. **Install dependencies:**
+   Ensure you have Node.js 18+ installed.
+   ```bash
+   npm install
+   ```
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+2. **Environment Variables:**
+   You can configure the backend URL in `.env` files (e.g. `.env.local` or `.env.development`).
+   ```env
+   VITE_API_URL=http://localhost:8081
+   ```
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+3. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+   The application will be available at `http://localhost:5173`.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+4. **Build for production:**
+   ```bash
+   npm run build
+   ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 📂 Architecture Overview
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- `/src/components/`: Modular UI components (Auth, Sidebar, ChatWindow, calls, modals).
+- `/src/context/`: Core state hubs (`AuthContext`, `ChatContext`, `CallContext`, `UIContext`).
+- `/src/crypto/`: Client-side encryption logic (`cryptoEngine.js`).
+- `/src/lib/`: API interceptors (`apiFetch.js`) and Query client configuration.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🔗 Links
+
+- **Main Repository README:** [../../README.md](../../README.md)
+- **Live Deployment:** [https://internship-project-xi.vercel.app](https://internship-project-xi.vercel.app)

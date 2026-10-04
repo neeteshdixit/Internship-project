@@ -14,4 +14,5 @@ public class CallSignalDto {
     private String sdp;
     private Object candidate; // For ICE candidates
     private String callType; // "audio" or "video"
+    private Long groupId;
 }

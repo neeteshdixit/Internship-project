@@ -52,6 +52,13 @@ public class MessageService {
                     .orElseThrow(() -> new IllegalArgumentException("Receiver not found: " + dto.getReceiverUsername()));
         }
 
+        if (group != null && group.isOnlyAdminsCanMessage()) {
+            boolean isAdmin = group.getCreatedBy() != null && group.getCreatedBy().getId().equals(sender.getId());
+            if (!isAdmin) {
+                throw new IllegalStateException("Only group admins can send messages in this group");
+            }
+        }
+
         Message message = Message.builder()
                 .sender(sender)
                 .receiver(receiver)

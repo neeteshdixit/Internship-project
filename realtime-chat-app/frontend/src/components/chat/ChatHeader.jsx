@@ -3,6 +3,7 @@ import { Phone, Video, Search, Star, Clock, EyeOff, AlertOctagon, Image, Downloa
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { useChat } from '../../context/ChatContext';
+import { useCall } from '../../context/CallContext';
 import useIsMobile from '../../hooks/useIsMobile';
 import DisappearingMessagesModal from '../modals/DisappearingMessagesModal';
 import ChatLockModal from '../modals/ChatLockModal';
@@ -11,6 +12,7 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen, o
   const isMobile = useIsMobile();
   const { toggleModal } = useUI();
   const { currentUser } = useAuth();
+  const { incomingCall, acceptCall } = useCall();
   const { typingUsers, onlineUsers, toggleVanishMode, triggerPanicWipe, selectedContact, updateContactAttribute, contacts } = useChat();
   const [showNukeConfirm, setShowNukeConfirm] = useState(false);
   const [showDisappearingModal, setShowDisappearingModal] = useState(false);
@@ -25,6 +27,11 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen, o
   const isOnline = activeChat?.isGroup ? false : (onlineUsers.has(rawName.toLowerCase()) || activeChat?.online || activeChat?.isOnline);
   const isTyping = rawName && typingUsers[rawName.toLowerCase()];
   const isVanish = !!activeChat?.vanishMode;
+
+  const showJoinCall = incomingCall?.isIgnored && (
+    (activeChat?.isGroup && incomingCall?.groupName === activeChat?.name) ||
+    (!activeChat?.isGroup && (incomingCall?.caller === activeChat?.username || incomingCall?.caller === activeChat?.name))
+  );
 
   const handleCall = (type) => {
     if (activeChat?.isGroup) {
@@ -318,23 +325,59 @@ export default function ChatHeader({ activeChat, onToggleSearch, isSearchOpen, o
           <Image size={17} />
         </button>
 
-        {/* Video Call */}
-        <button
-          onClick={() => handleCall('VIDEO')}
-          title="Video Call"
-          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
-        >
-          <Video size={17} />
-        </button>
+        {/* Join Call or regular call buttons */}
+        {showJoinCall ? (
+          <button
+            onClick={() => acceptCall()}
+            title="Join Ongoing Call"
+            style={{
+              background: '#00a884',
+              border: 'none',
+              color: '#fff',
+              cursor: 'pointer',
+              padding: '6px 12px',
+              borderRadius: '14px',
+              fontSize: '12px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              flexShrink: 0
+            }}
+          >
+            <Video size={14} /> Join Call
+          </button>
+        ) : (
+          <>
+            {/* Video Call */}
+            {(!activeChat?.isGroup || !activeChat?.onlyAdminsCanCall || 
+              (activeChat?.admins || []).some(a => a.username?.toLowerCase() === currentUser?.username?.toLowerCase()) ||
+              ((!activeChat?.admins || activeChat?.admins?.length === 0) && activeChat?.createdBy?.username?.toLowerCase() === currentUser?.username?.toLowerCase())
+            ) && (
+              <button
+                onClick={() => handleCall('VIDEO')}
+                title="Video Call"
+                style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
+              >
+                <Video size={17} />
+              </button>
+            )}
 
-        {/* Audio Call */}
-        <button
-          onClick={() => handleCall('AUDIO')}
-          title="Voice Call"
-          style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
-        >
-          <Phone size={17} />
-        </button>
+            {/* Audio Call */}
+            {(!activeChat?.isGroup || !activeChat?.onlyAdminsCanCall || 
+              (activeChat?.admins || []).some(a => a.username?.toLowerCase() === currentUser?.username?.toLowerCase()) ||
+              ((!activeChat?.admins || activeChat?.admins?.length === 0) && activeChat?.createdBy?.username?.toLowerCase() === currentUser?.username?.toLowerCase())
+            ) && (
+              <button
+                onClick={() => handleCall('AUDIO')}
+                title="Voice Call"
+                style={{ background: 'transparent', border: 'none', color: '#aebac1', cursor: 'pointer', padding: isMobile ? '5px' : '7px', borderRadius: '50%', flexShrink: 0 }}
+              >
+                <Phone size={17} />
+              </button>
+            )}
+          </>
+        )}
 
         {/* 🥈 Universal Search 2.0 */}
         <button

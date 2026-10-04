@@ -36,12 +36,33 @@ public class ChatGroup {
     )
     private Set<User> members = new HashSet<>();
 
+    @ManyToMany(fetch = FetchType.EAGER)
+    @Builder.Default
+    @JoinTable(
+        name = "group_admins",
+        joinColumns = @JoinColumn(name = "group_id"),
+        inverseJoinColumns = @JoinColumn(name = "user_id")
+    )
+    private Set<User> admins = new HashSet<>();
+
     private LocalDateTime createdAt;
 
     @Transient
     private String lastMessage;
     @Transient
     private String lastMessageTimestamp;
+
+    @Column(columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean onlyAdminsCanMessage = false;
+
+    @Column(columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean onlyAdminsCanCall = false;
+
+    @Column(columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean onlyAdminsCanAddMembers = false;
 
     @PrePersist
     protected void onCreate() {

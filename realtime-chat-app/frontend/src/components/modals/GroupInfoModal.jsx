@@ -24,6 +24,10 @@ export default function GroupInfoModal() {
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+  // Bulk promote admins state
+  const [isPromotingAdmins, setIsPromotingAdmins] = useState(false);
+  const [selectedForAdmin, setSelectedForAdmin] = useState([]);
+
   const groupId = selectedContact?.id;
 
   const fetchGroupDetails = async () => {
@@ -134,6 +138,84 @@ export default function GroupInfoModal() {
       selectContact(null);
     } catch (err) {
       setError(err.message || 'Failed to exit group');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleMakeAdmin = async (identifier) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      const updated = await apiFetch(`/api/groups/${groupId}/admins`, {
+        method: 'POST',
+        body: JSON.stringify({ memberId: identifier }),
+      });
+      setGroupDetails(updated);
+      await refreshContacts();
+    } catch (err) {
+      setError(err.message || 'Failed to promote member');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDismissAdmin = async (identifier) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      const updated = await apiFetch(`/api/groups/${groupId}/admins/${encodeURIComponent(identifier)}`, {
+        method: 'DELETE',
+      });
+      setGroupDetails(updated);
+      await refreshContacts();
+    } catch (err) {
+      setError(err.message || 'Failed to demote admin');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const toggleSelectForAdmin = (username) => {
+    setSelectedForAdmin(prev =>
+      prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]
+    );
+  };
+
+  const handleBulkPromote = async () => {
+    if (selectedForAdmin.length === 0) return;
+    setActionLoading(true);
+    setError('');
+    let lastUpdated = groupDetails;
+    try {
+      for (const username of selectedForAdmin) {
+        lastUpdated = await apiFetch(`/api/groups/${groupId}/admins`, {
+          method: 'POST',
+          body: JSON.stringify({ memberId: username }),
+        });
+      }
+      setGroupDetails(lastUpdated);
+      setIsPromotingAdmins(false);
+      setSelectedForAdmin([]);
+      await refreshContacts();
+    } catch (err) {
+      setError(err.message || 'Failed to promote members');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpdateSettings = async (settingName, value) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      const updated = await apiFetch(`/api/groups/${groupId}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify({ [settingName]: value }),
+      });
+      setGroupDetails(updated);
+    } catch (err) {
+      setError(err.message || 'Failed to update settings');
     } finally {
       setActionLoading(false);
     }
@@ -395,44 +477,65 @@ export default function GroupInfoModal() {
                   <span style={{ color: '#8696a0', fontSize: '13px', fontWeight: 600, textTransform: 'uppercase' }}>
                     {groupDetails?.members?.length || 0} PARTICIPANTS
                   </span>
-                  <button
-                    onClick={() => setIsAddingMembers(true)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#00a884',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <UserPlus size={15} /> Add Participants
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {isAdmin && !isPromotingAdmins && (
+                      <button
+                        onClick={() => { setIsPromotingAdmins(true); setSelectedForAdmin([]); }}
+                        style={{ background: 'none', border: 'none', color: '#f59e0b', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <ShieldCheck size={14} /> Make Admins
+                      </button>
+                    )}
+                    {isPromotingAdmins && (
+                      <>
+                        <button
+                          onClick={handleBulkPromote}
+                          disabled={selectedForAdmin.length === 0 || actionLoading}
+                          style={{ background: selectedForAdmin.length > 0 ? '#00a884' : '#2a3942', border: 'none', color: selectedForAdmin.length > 0 ? '#fff' : '#8696a0', fontSize: '12px', fontWeight: 600, cursor: selectedForAdmin.length > 0 ? 'pointer' : 'not-allowed', padding: '5px 12px', borderRadius: '14px' }}
+                        >
+                          {actionLoading ? 'Promoting...' : `Promote ${selectedForAdmin.length > 0 ? `(${selectedForAdmin.length})` : ''}`}
+                        </button>
+                        <button
+                          onClick={() => { setIsPromotingAdmins(false); setSelectedForAdmin([]); }}
+                          style={{ background: 'none', border: 'none', color: '#8696a0', fontSize: '12px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                    {(!groupDetails?.onlyAdminsCanAddMembers || isAdmin) && !isPromotingAdmins && (
+                      <button
+                        onClick={() => setIsAddingMembers(true)}
+                        style={{ background: 'none', border: 'none', color: '#00a884', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <UserPlus size={15} /> Add
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Add participant quick row */}
-                <div
-                  onClick={() => setIsAddingMembers(true)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '10px 0',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid #1f2c34',
-                  }}
-                >
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <UserPlus size={20} color="#fff" />
+                {(!groupDetails?.onlyAdminsCanAddMembers || isAdmin) && (
+                  <div
+                    onClick={() => setIsAddingMembers(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '10px 0',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #1f2c34',
+                    }}
+                  >
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <UserPlus size={20} color="#fff" />
+                    </div>
+                    <div>
+                      <div style={{ color: '#00a884', fontSize: '14px', fontWeight: 500 }}>Add participants</div>
+                      <div style={{ color: '#8696a0', fontSize: '12px' }}>Select from contacts</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ color: '#00a884', fontSize: '14px', fontWeight: 500 }}>Add participants</div>
-                    <div style={{ color: '#8696a0', fontSize: '12px' }}>Select from contacts</div>
-                  </div>
-                </div>
+                )}
 
                 {/* Participants list */}
                 <div style={{ display: 'flex', flexDirection: 'column', marginTop: '6px' }}>
@@ -442,20 +545,37 @@ export default function GroupInfoModal() {
                     groupDetails?.members?.map((member) => {
                       const name = member.username || 'Participant';
                       const isSelf = member.isYou || member.username?.toLowerCase() === currentUser?.username?.toLowerCase();
-                      const canRemove = isAdmin && !isSelf;
+                      const canRemove = isAdmin && !isSelf && !isPromotingAdmins;
+                      const canPromote = isAdmin && !isSelf && !member.isAdmin && !isPromotingAdmins;
+                      const canDemote = isAdmin && !isSelf && member.isAdmin && !isPromotingAdmins;
+                      const isEligibleForBulk = isAdmin && !isSelf && !member.isAdmin;
+                      const isCheckedForAdmin = selectedForAdmin.includes(member.username);
 
                       return (
                         <div
                           key={member.id || member.username}
+                          onClick={isPromotingAdmins && isEligibleForBulk ? () => toggleSelectForAdmin(member.username) : undefined}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             padding: '10px 0',
                             borderBottom: '1px solid rgba(255,255,255,0.03)',
+                            cursor: isPromotingAdmins && isEligibleForBulk ? 'pointer' : 'default',
+                            backgroundColor: isCheckedForAdmin ? 'rgba(0,168,132,0.08)' : 'transparent',
+                            borderRadius: '8px',
+                            paddingInline: '6px',
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                            {isPromotingAdmins && isEligibleForBulk && (
+                              <div style={{
+                                width: '20px', height: '20px', borderRadius: '50%', border: `2px solid ${isCheckedForAdmin ? '#00a884' : '#8696a0'}`,
+                                backgroundColor: isCheckedForAdmin ? '#00a884' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                              }}>
+                                {isCheckedForAdmin && <Check size={12} color="#fff" />}
+                              </div>
+                            )}
                             <img
                               src={member.profilePicUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=2a3942&color=aebac1&size=40`}
                               alt=""
@@ -490,6 +610,44 @@ export default function GroupInfoModal() {
                               </span>
                             )}
 
+                            {canPromote && (
+                              <button
+                                onClick={() => handleMakeAdmin(member.username || member.id)}
+                                title={`Make ${name} an admin`}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#8696a0',
+                                  cursor: 'pointer',
+                                  padding: '6px',
+                                  borderRadius: '50%',
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = '#00a884')}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = '#8696a0')}
+                              >
+                                <ShieldCheck size={16} />
+                              </button>
+                            )}
+
+                            {canDemote && (
+                              <button
+                                onClick={() => handleDismissAdmin(member.username || member.id)}
+                                title={`Dismiss ${name} as admin`}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#8696a0',
+                                  cursor: 'pointer',
+                                  padding: '6px',
+                                  borderRadius: '50%',
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = '#f59e0b')}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = '#8696a0')}
+                              >
+                                <AlertCircle size={16} />
+                              </button>
+                            )}
+
                             {canRemove && (
                               <button
                                 onClick={() => setMemberToRemove(member)}
@@ -513,6 +671,96 @@ export default function GroupInfoModal() {
                       );
                     })
                   )}
+                </div>
+              </div>
+
+              {/* Group Settings */}
+              <div style={{ padding: '16px 20px', borderBottom: '8px solid #0c1317' }}>
+                <span style={{ color: '#8696a0', fontSize: '13px', fontWeight: 600, textTransform: 'uppercase' }}>
+                  Group Settings
+                </span>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ color: '#e9edef', fontSize: '14px', fontWeight: 500 }}>Only Admins Can Send Messages</div>
+                      <div style={{ color: '#8696a0', fontSize: '12px' }}>Restrict who can send messages to the group</div>
+                    </div>
+                    <label style={{ position: 'relative', display: 'inline-block', width: '36px', height: '20px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={groupDetails?.onlyAdminsCanMessage || false} 
+                        onChange={(e) => handleUpdateSettings('onlyAdminsCanMessage', e.target.checked)}
+                        disabled={!isAdmin || actionLoading}
+                        style={{ opacity: 0, width: 0, height: 0 }} 
+                      />
+                      <span style={{
+                        position: 'absolute', cursor: (!isAdmin || actionLoading) ? 'not-allowed' : 'pointer', inset: 0, 
+                        backgroundColor: groupDetails?.onlyAdminsCanMessage ? '#00a884' : '#8696a0', 
+                        borderRadius: '20px', transition: '.4s', opacity: (!isAdmin) ? 0.5 : 1
+                      }}>
+                        <span style={{
+                          position: 'absolute', height: '14px', width: '14px', left: '3px', bottom: '3px',
+                          backgroundColor: 'white', borderRadius: '50%', transition: '.4s',
+                          transform: groupDetails?.onlyAdminsCanMessage ? 'translateX(16px)' : 'translateX(0)'
+                        }}></span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ color: '#e9edef', fontSize: '14px', fontWeight: 500 }}>Only Admins Can Call</div>
+                      <div style={{ color: '#8696a0', fontSize: '12px' }}>Restrict who can start a group call</div>
+                    </div>
+                    <label style={{ position: 'relative', display: 'inline-block', width: '36px', height: '20px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={groupDetails?.onlyAdminsCanCall || false} 
+                        onChange={(e) => handleUpdateSettings('onlyAdminsCanCall', e.target.checked)}
+                        disabled={!isAdmin || actionLoading}
+                        style={{ opacity: 0, width: 0, height: 0 }} 
+                      />
+                      <span style={{
+                        position: 'absolute', cursor: (!isAdmin || actionLoading) ? 'not-allowed' : 'pointer', inset: 0, 
+                        backgroundColor: groupDetails?.onlyAdminsCanCall ? '#00a884' : '#8696a0', 
+                        borderRadius: '20px', transition: '.4s', opacity: (!isAdmin) ? 0.5 : 1
+                      }}>
+                        <span style={{
+                          position: 'absolute', height: '14px', width: '14px', left: '3px', bottom: '3px',
+                          backgroundColor: 'white', borderRadius: '50%', transition: '.4s',
+                          transform: groupDetails?.onlyAdminsCanCall ? 'translateX(16px)' : 'translateX(0)'
+                        }}></span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ color: '#e9edef', fontSize: '14px', fontWeight: 500 }}>Only Admins Can Add Members</div>
+                      <div style={{ color: '#8696a0', fontSize: '12px' }}>Restrict who can add new participants</div>
+                    </div>
+                    <label style={{ position: 'relative', display: 'inline-block', width: '36px', height: '20px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={groupDetails?.onlyAdminsCanAddMembers || false} 
+                        onChange={(e) => handleUpdateSettings('onlyAdminsCanAddMembers', e.target.checked)}
+                        disabled={!isAdmin || actionLoading}
+                        style={{ opacity: 0, width: 0, height: 0 }} 
+                      />
+                      <span style={{
+                        position: 'absolute', cursor: (!isAdmin || actionLoading) ? 'not-allowed' : 'pointer', inset: 0, 
+                        backgroundColor: groupDetails?.onlyAdminsCanAddMembers ? '#00a884' : '#8696a0', 
+                        borderRadius: '20px', transition: '.4s', opacity: (!isAdmin) ? 0.5 : 1
+                      }}>
+                        <span style={{
+                          position: 'absolute', height: '14px', width: '14px', left: '3px', bottom: '3px',
+                          backgroundColor: 'white', borderRadius: '50%', transition: '.4s',
+                          transform: groupDetails?.onlyAdminsCanAddMembers ? 'translateX(16px)' : 'translateX(0)'
+                        }}></span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 

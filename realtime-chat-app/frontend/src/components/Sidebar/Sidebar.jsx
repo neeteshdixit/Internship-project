@@ -4,7 +4,7 @@ import { useChat } from '../../context/ChatContext';
 import { useUI } from '../../context/UIContext';
 import { apiFetch } from '../../lib/apiFetch';
 import useIsMobile from '../../hooks/useIsMobile';
-import { MessageSquare, Radio, Phone, BarChart2, Settings, Search, Plus, Users, UserPlus, FileText, Image, Lock, Unlock, Pin, Star, ShieldCheck } from 'lucide-react';
+import { MessageSquare, Radio, Phone, BarChart2, Settings, Search, Plus, Users, UserPlus, FileText, Image, Lock, Unlock, Pin, Star, ShieldCheck, BellOff } from 'lucide-react';
 import StatusPanel from './StatusPanel';
 import CallsPanel from './CallsPanel';
 import AnalyticsPanel from './AnalyticsPanel';
@@ -24,13 +24,21 @@ export default function Sidebar() {
   const [showLockModal, setShowLockModal] = useState(false);
   const [isFolderUnlocked, setIsFolderUnlocked] = useState(false);
   const [lockedChatIds, setLockedChatIds] = useState(() => JSON.parse(localStorage.getItem('setu_locked_chats') || '[]'));
+  const [secretCode, setSecretCode] = useState(() => localStorage.getItem('setu_chat_lock_secret_code') || '');
 
   React.useEffect(() => {
     const handleUpdate = () => {
       setLockedChatIds(JSON.parse(localStorage.getItem('setu_locked_chats') || '[]'));
     };
+    const handleSecretUpdate = () => {
+      setSecretCode(localStorage.getItem('setu_chat_lock_secret_code') || '');
+    };
     window.addEventListener('locked_chats_updated', handleUpdate);
-    return () => window.removeEventListener('locked_chats_updated', handleUpdate);
+    window.addEventListener('secret_code_updated', handleSecretUpdate);
+    return () => {
+      window.removeEventListener('locked_chats_updated', handleUpdate);
+      window.removeEventListener('secret_code_updated', handleSecretUpdate);
+    };
   }, []);
 
   const handleToggleLock = (contact) => {
@@ -173,7 +181,7 @@ export default function Sidebar() {
         {/* Contacts */}
         <div style={styles.contactList}>
           {/* WhatsApp-style Locked Chats folder entry */}
-          {lockedChatIds.length > 0 && (
+          {lockedChatIds.length > 0 && (!secretCode || searchQuery === secretCode) && (
             <div
               onClick={() => {
                 if (isFolderUnlocked) {
@@ -246,7 +254,18 @@ export default function Sidebar() {
               {activeFilter !== 'ALL' ? `No ${activeFilter.toLowerCase()} contacts` : 'No conversations found.'}<br />
               <span style={{ color: '#00a884', cursor: 'pointer', marginTop: '8px', display: 'block' }} onClick={() => setShowAddContact(true)}>+ Add contact to start chatting</span>
             </div>
-          ) : [...filteredContacts].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)).map((contact) => {
+          ) : [...filteredContacts].sort((a, b) => {
+            if (a.isPinned !== b.isPinned) return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+            const chatKeyA = getChatKey(a);
+            const chatKeyB = getChatKey(b);
+            const msgsA = (chatKeyA && messages[chatKeyA]) ? messages[chatKeyA] : [];
+            const msgsB = (chatKeyB && messages[chatKeyB]) ? messages[chatKeyB] : [];
+            const fallbackA = a.lastMessageTimestamp ? new Date(a.lastMessageTimestamp).getTime() : 0;
+            const fallbackB = b.lastMessageTimestamp ? new Date(b.lastMessageTimestamp).getTime() : 0;
+            const lastTimeA = msgsA.length > 0 ? new Date(msgsA[msgsA.length - 1].timestamp).getTime() : fallbackA;
+            const lastTimeB = msgsB.length > 0 ? new Date(msgsB[msgsB.length - 1].timestamp).getTime() : fallbackB;
+            return lastTimeB - lastTimeA;
+          }).map((contact) => {
             const isSelected = selectedContact?.id === contact.id && selectedContact?.username === contact.username;
             const displayName = contact.customName || contact.name || contact.username || 'Contact';
             const rawName = contact.username || contact.name || '';
@@ -360,6 +379,27 @@ export default function Sidebar() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          updateContactAttribute(contact.id || contact.username, 'isMuted', !contact.isMuted);
+                        }}
+                        title={contact.isMuted ? 'Unmute chat' : 'Mute chat'}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: contact.isMuted ? '#ef4444' : '#8696a0',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          borderRadius: '4px',
+                          opacity: contact.isMuted ? 1 : 0.45,
+                        }}
+                      >
+                        <BellOff size={12} fill={contact.isMuted ? '#ef4444' : 'none'} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleToggleLock(contact);
                         }}
                         title={isChatLocked ? 'Unlock chat' : 'Lock chat with PIN'}
@@ -377,7 +417,7 @@ export default function Sidebar() {
                       >
                         <Lock size={12} fill={isChatLocked ? '#00a884' : 'none'} />
                       </button>
-                      {unread > 0 && <span style={{ backgroundColor: '#00a884', color: '#fff', fontSize: '10px', fontWeight: 700, borderRadius: '10px', padding: '1px 6px', flexShrink: 0 }}>{unread}</span>}
+                      {unread > 0 && <span style={{ backgroundColor: contact.isMuted ? '#8696a0' : '#00a884', color: '#111b21', fontSize: '10px', fontWeight: 700, borderRadius: '10px', padding: '1px 6px', flexShrink: 0 }}>{unread}</span>}
                     </div>
                   </div>
                   <div style={{ fontSize: '12px', color: isTyping ? '#00a884' : draftText ? '#00a884' : '#8696a0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: (isTyping || draftText) ? 'italic' : 'normal' }}>

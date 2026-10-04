@@ -20,10 +20,12 @@ public class ContactController {
 
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
+    private final com.whatsappclone.repo.MessageRepository messageRepository;
 
-    public ContactController(ContactRepository contactRepository, UserRepository userRepository) {
+    public ContactController(ContactRepository contactRepository, UserRepository userRepository, com.whatsappclone.repo.MessageRepository messageRepository) {
         this.contactRepository = contactRepository;
         this.userRepository = userRepository;
+        this.messageRepository = messageRepository;
     }
 
     // Get all contacts of the authenticated user
@@ -38,7 +40,7 @@ public class ContactController {
         }
         List<ContactDTO> contacts = contactRepository.findByOwner(owner)
                 .stream()
-                .map(this::toDTO)
+                .map(contact -> toDTO(contact, owner))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(contacts);
     }
@@ -103,7 +105,7 @@ public class ContactController {
         contact.setContactUser(contactUser);
         contact.setCustomName(contactUser.getUsername()); // default to their username
         Contact saved = contactRepository.save(contact);
-        return ResponseEntity.ok(toDTO(saved));
+        return ResponseEntity.ok(toDTO(saved, owner));
     }
 
     // Update custom name for a contact
@@ -147,7 +149,7 @@ public class ContactController {
         }
 
         Contact saved = contactRepository.save(contact);
-        return ResponseEntity.ok(toDTO(saved));
+        return ResponseEntity.ok(toDTO(saved, owner));
     }
 
     // Delete contact
@@ -171,11 +173,20 @@ public class ContactController {
     }
 
     // Helper to convert Contact to DTO
-    private ContactDTO toDTO(Contact contact) {
+    private ContactDTO toDTO(Contact contact, User owner) {
         User cu = contact.getContactUser();
+        String lastMsgTime = null;
+        if (owner != null && cu != null) {
+            com.whatsappclone.model.Message lastMsg = messageRepository.findLastMessage(owner.getId(), cu.getId());
+            if (lastMsg != null && lastMsg.getTimestamp() != null) {
+                lastMsgTime = lastMsg.getTimestamp().toString();
+            }
+        }
+
         return new ContactDTO(
                 contact.getId(),
                 cu.getId(),
+                cu.getUsername(),
                 cu.getUsername(),
                 cu.getProfilePicUrl(),
                 contact.getCustomName(),
@@ -186,7 +197,8 @@ public class ContactController {
                 contact.isPinned(),
                 contact.isArchived(),
                 contact.isMuted(),
-                contact.getLabel()
+                contact.getLabel(),
+                lastMsgTime
         );
     }
 
