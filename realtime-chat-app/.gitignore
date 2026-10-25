@@ -28,3 +28,10 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+
+### Presentations & Documentation
+presentation/
+synopsis_extracted/
+synopsis_temp/
+[Ss]ynopsis of my chat app.docx
+synopsis_text.txt

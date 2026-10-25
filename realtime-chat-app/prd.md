@@ -1,27 +1,24 @@
 # Product Requirements Document (PRD)
 
-## Project: Setu Connect — Secure Real-Time Chat with Multi-Provider AI
+## Project: Setu Connect — Secure Real-Time Chat
 **Author:** Neetesh Dixit  
 **Status:** APPROVED (Updated v2.0 — August 2026)  
 **Target Architecture:** Java Full Stack (Spring Boot + React)  
-**Key Update:** Migrated from Ollama-only AI to Multi-Provider AI system (Device → Ollama → Gemini). Redis removed. Presence managed in-memory.
+**Key Update:** Redis removed. Presence managed in-memory.
 
 ---
 
 ## 1. Executive Summary & Objective
 
-Setu Connect is a high-performance, real-time messaging application built for enterprise teams. It provides WhatsApp-level user experience with enterprise-grade security, privacy controls, and AI-powered productivity features.
+Setu Connect is a high-performance, real-time messaging application built for enterprise teams. It provides WhatsApp-level user experience with enterprise-grade security and privacy controls.
 
 ### What makes Setu Connect unique?
 
 | Feature | Standard Chat Apps | Setu Connect |
 |---|---|---|
-| AI data privacy | Silently sends to cloud AI | Full transparency report on every AI call |
-| AI provider | Single cloud provider | Multi-tier: Device → Ollama → Gemini |
 | Message encryption | Server-side (or none) | AES-256 client-side before sending |
 | Emergency privacy | No panic wipe | One-click purge of all messages |
 | Call integration | Third-party SDK | WebRTC P2P, no external call server |
-| AI cost | Per-token cloud billing | Local AI = $0 per token |
 
 ---
 
@@ -34,9 +31,6 @@ Setu Connect is a high-performance, real-time messaging application built for en
 | **Styling** | Vanilla CSS (CSS Variables) | — | Theme system, dark/light mode |
 | **Primary Database** | PostgreSQL | Latest | Users, messages, contacts, calls, etc. |
 | **Real-time Protocol** | STOMP over WebSockets (SockJS) | — | Messaging, presence, call signaling |
-| **AI Provider 1** | Device AI (Browser/OS) | — | Local, zero-network AI (placeholder) |
-| **AI Provider 2** | Ollama (local server) | Via Spring AI | Optional local AI (llama3.2, etc.) |
-| **AI Provider 3** | Google Gemini Flash 1.5 | REST API | Cloud AI fallback |
 | **Authentication** | JWT (HMAC-SHA256) | jjwt 0.11.5 | Stateless token auth |
 | **Build Tools** | Maven + npm | — | Backend + Frontend dependency management |
 | **Deployment** | Vercel (Frontend) + Render (Backend) | — | Production hosting |
@@ -98,78 +92,36 @@ Setu Connect is a high-performance, real-time messaging application built for en
 *   **Call History:** Shown in Calls tab with direction (incoming/outgoing), duration, peer avatar.
 *   **System Message:** Call end auto-generates a call summary message in the chat (e.g., "📞 Audio Call • 2:25").
 
-### 3.7. Multi-Provider AI Features (The Core USP)
-
-**AI Provider Selection Logic (AiProviderManager):**
-```
-AUTO mode (default):
-  1. DeviceAiProvider.isAvailable()? → use device AI
-  2. OllamaAiProvider.isAvailable()? → ping localhost:11434 → use if running
-  3. GeminiAiProvider.isAvailable()? → check if API key configured → use cloud
-  4. All fail → return "AI Unavailable"
-```
-
-**16 AI Features Available:**
-1. **Chat Summarize** — Bullet summary + key points + decisions
-2. **Smart Reply** — 3 context-aware reply suggestions
-3. **Rewrite Message** — Change tone (formal/casual/professional)
-4. **Grammar Fix** — Correct spelling & grammar
-5. **Translate** — Translate to any language
-6. **Extract Tasks** — Pull action items from conversation
-7. **Detect Meeting** — Find meeting schedules (structured JSON)
-8. **Set Reminder** — Extract reminder info (structured JSON)
-9. **Generate Chat Title** — 4-word topic title
-10. **Detect Mood** — Emotional analysis (JSON + confidence score)
-11. **Convert to Notes** — Structured notes from conversation
-12. **Explain Simply** — Simplify technical/long text (by level)
-13. **Draft Email** — Professional email from chat context
-14. **Improve Message** — Improve clarity before sending
-15. **Daily Summary** — Day's messaging + calling activity
-16. **AI Chat Assistant** — Multi-turn conversational AI
-
-**Privacy Transparency (Every AI Response):**
-```json
-{
-  "provider": "Gemini | Ollama | Device | None",
-  "processingMode": "Cloud | Local | N/A",
-  "sentOutsideDevice": true | false,
-  "temporaryBufferReleased": true,
-  "processingTimeSeconds": 2.3,
-  "status": "Completed | Failed | Unavailable"
-}
-```
-
-### 3.8. Status/Stories (WhatsApp-Style)
+### 3.7. Status/Stories (WhatsApp-Style)
 *   Post text, image, or video statuses with 24-hour expiry.
 *   View contacts' active statuses in Status tab.
 *   Status viewer with progress bar, caption, timestamp.
 *   Text statuses support custom background colors.
 
-### 3.9. Group Chats
+### 3.8. Group Chats
 *   Create group with custom name and multiple members.
 *   Group messages broadcast to all members in real-time.
 *   Group info: member list, group name (editable).
 
-### 3.10. Scheduled Messages
+### 3.9. Scheduled Messages
 *   Compose a message with a future send time.
 *   Backend Spring `@Scheduled` task checks every minute and auto-sends.
 
-### 3.11. Vanish Mode
+### 3.10. Vanish Mode
 *   Enable per-conversation — messages auto-deleted after being read.
 *   Backend service + scheduler handles deletion.
 
-### 3.12. Privacy & Security Controls
+### 3.11. Privacy & Security Controls
 *   Per-field visibility: Last Seen, Online, Profile Photo, About, Read Receipts, Group Add, Call Privacy.
 *   Options: EVERYONE / CONTACTS / NOBODY.
 *   Server enforces these rules — not just UI hints.
 
-### 3.13. Analytics Dashboard
+### 3.12. Analytics Dashboard
 *   Total messages sent/received count.
 *   Total calls made + total duration.
-*   AI features usage tracking.
 *   Most active contacts list.
 
-### 3.14. Contact Management
+### 3.13. Contact Management
 *   Add contacts by phone number or username search.
 *   Custom display names for contacts.
 *   Remove contacts.
@@ -195,9 +147,6 @@ call_records:       id, caller_id, receiver_id, call_type, status, duration_seco
 statuses:           id, user_id, media_url, caption, type, text_background, expires_at, created_at
 privacy_settings:   id, user_id, last_seen_visibility, online_visibility, profile_photo_visibility, 
                     about_visibility, read_receipts, group_privacy, call_privacy
-ai_settings:        id (always 1), preferred_provider, ask_permission_every_time, 
-                    always_allow_cloud, disable_cloud_ai, prefer_local_processing,
-                    never_automatically_send_to_cloud, show_privacy_notice_before_cloud
 scheduled_messages: id, sender_id, receiver_id, content, send_at, sent
 conversation_vanish_mode: id, user1_id, user2_id, enabled
 ```
@@ -253,29 +202,6 @@ conversation_vanish_mode: id, user1_id, user2_id, enabled
 - `GET /api/statuses` — Get active statuses of contacts
 - `POST /api/statuses` — Post new status
 
-**AI:**
-- `GET /api/ai/status` — Current provider status
-- `GET /api/ai/preflight` — Pre-flight check (cloud permission needed?)
-- `GET /api/ai/settings` — Get AI settings
-- `POST /api/ai/settings` — Save AI settings
-- `GET /api/ai/summarize/{u1}/{u2}` — Summarize a conversation
-- `POST /api/ai/summarize` — Summarize (custom text)
-- `POST /api/ai/smart-reply` — Get smart replies
-- `POST /api/ai/rewrite` — Rewrite message
-- `POST /api/ai/grammar` — Fix grammar
-- `POST /api/ai/translate` — Translate message
-- `POST /api/ai/tasks` — Extract action items
-- `POST /api/ai/meetings` — Detect meeting
-- `POST /api/ai/reminders` — Extract reminders
-- `POST /api/ai/title` — Generate chat title
-- `POST /api/ai/mood` — Detect mood
-- `POST /api/ai/notes` — Convert to notes
-- `POST /api/ai/explain` — Explain text
-- `POST /api/ai/email` — Draft email
-- `POST /api/ai/improve` — Improve message
-- `POST /api/ai/daily-summary` — Daily activity summary
-- `POST /api/ai/chat` — Conversational AI
-
 **Scheduled Messages:**
 - `GET /api/scheduled` — Get scheduled messages
 - `POST /api/scheduled` — Create scheduled message
@@ -310,22 +236,18 @@ conversation_vanish_mode: id, user1_id, user2_id, enabled
 | Phase 1 | Auth (register/login/JWT) | ✅ Complete |
 | Phase 2 | Real-time messaging + read receipts | ✅ Complete |
 | Phase 3 | Presence (in-memory, no Redis) | ✅ Complete |
-| Phase 4 | AI Integration (multi-provider) | ✅ Complete |
-| Phase 5 | React Frontend (full UI) | ✅ Complete |
-| Phase 6 | Voice/Video calls (WebRTC) | ✅ Complete |
-| Phase 7 | Groups, Status, Analytics | ✅ Complete |
-| Phase 8 | Privacy settings + Panic Wipe | ✅ Complete |
-| Phase 9 | Scheduled messages + Vanish mode | ✅ Complete |
-| Phase 10 | AES-256 message encryption | ✅ Complete |
-| Phase 11 | Vercel + Render deployment | ✅ Complete |
+| Phase 4 | React Frontend (full UI) | ✅ Complete |
+| Phase 5 | Voice/Video calls (WebRTC) | ✅ Complete |
+| Phase 6 | Groups, Status, Analytics | ✅ Complete |
+| Phase 7 | Privacy settings + Panic Wipe | ✅ Complete |
+| Phase 8 | Scheduled messages + Vanish mode | ✅ Complete |
+| Phase 9 | AES-256 message encryption | ✅ Complete |
+| Phase 10 | Vercel + Render deployment | ✅ Complete |
 
 ---
 
 ## 7. Edge Cases & System Resilience
 
-*   **Ollama Unavailable:** `OllamaAiProvider.isAvailable()` catches exceptions. AUTO mode falls through to Gemini. Core chat unaffected.
-*   **Gemini API Key Not Set:** `GeminiAiProvider.isAvailable()` checks for non-blank API key. Returns null provider if not set.
-*   **All AI Providers Fail:** `AiService.executeWithReport()` receives null provider → returns graceful "AI Unavailable" response.
 *   **WebSocket Disconnect:** STOMP client auto-reconnects. Offline messages queued in localStorage, flushed on reconnect.
 *   **Message Delete Time Exceeded:** Backend checks timestamp + 15 minutes. Returns HTTP 400 if exceeded.
 *   **Call to Offline User:** `offlineNotice` toast shown. `POST /api/calls` saves with status "offline".

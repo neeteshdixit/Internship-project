@@ -27,7 +27,7 @@
 
 ## 1. Project Overview
 
-**Setu Connect** ek WhatsApp-jaise real-time secure chat application hai jo enterprise teams ke liye bani hai. Yeh app regular messaging ke saath AI-powered features deti hai jaise chat summarization, smart replies, grammar correction, message translation, aur bahut kuch.
+**Setu Connect** ek WhatsApp-jaise real-time secure chat application hai jo enterprise teams ke liye bani hai. Yeh app regular messaging ke saath AI-powered features deti hai jaise WebRTC calls, E2E encryption aur vanish mode.
 
 ### 1.1 App Name & Identity
 - **Product Name:** Setu Connect
@@ -77,17 +77,6 @@
 | lucide-react | 1.18.0 | Icon library |
 | @tanstack/react-query | 5.101.4 | Server state management |
 | Vanilla CSS | — | Styling (NO Tailwind) |
-
-### 2.3 AI Providers (Priority Order)
-```
-1st → Device AI (Browser/OS built-in) — LOCAL, No data leaves device
-2nd → Ollama (Local server) — LOCAL, requires Ollama running
-3rd → Gemini 1.5 Flash (Google Cloud) — CLOUD, requires API key
-```
-
-> **⚠️ Important Change (v2.0):** Pehle Ollama primary provider tha aur required tha. Ab yeh optional hai.
-> System **AUTO mode** mein chalega. Agar koi local provider available nahi hai, toh **Gemini API** use hogi (cloud mode).
-> App Ollama ke bina bhi fully functional hai.
 
 ---
 
@@ -518,28 +507,7 @@ frontend/
 
 ---
 
-### 6.7 AI APIs — All at `/api/ai/*`
-
-**Common Input DTO:**
-```json
-{ "text": "conversation transcript or message here", "param": "optional (language/tone/level)" }
-```
-
-**Common Output DTO (AiReportResponse):**
-```json
-{
-  "responseText": "AI generated response here...",
-  "provider": "Gemini | Ollama | Device | None",
-  "processingMode": "Cloud | Local | N/A",
-  "sentOutsideDevice": true,
-  "temporaryBufferReleased": true,
-  "processingTimeSeconds": 2.3,
-  "status": "Completed | Failed | Unavailable"
-}
-```
-
-| Endpoint | `text` field | `param` field | AI Function |
-|---|---|---|---|
+---|---|---|---|
 | `POST /api/ai/summarize` | Chat transcript | — | Bullet summary + key points + decisions |
 | `POST /api/ai/smart-reply` | Chat transcript | — | 3 context-aware reply suggestions (one per line) |
 | `POST /api/ai/rewrite` | Single message | `formal / casual / professional` | Rewrites message in given tone |
@@ -640,94 +608,6 @@ On disconnect: PresenceService.userOffline(sessionId)
 
 Poll: GET /api/users/online → returns Set<String> of online usernames
 ```
-
----
-
-## 8. AI System Architecture
-
-### 8.1 Provider Selection Flow (AiProviderManager)
-```
-Request arrives at AiController
-    ↓
-AiService.executeWithReport(promptText)
-    ↓
-AiProviderManager.selectProvider()
-    ↓ reads AiSettings from DB (singleton record id=1)
-
-┌─────────────────────────────────────────────────┐
-│ preferredProvider = "DEVICE" → DeviceAiProvider  │
-│ preferredProvider = "LOCAL"  → OllamaAiProvider  │
-│ preferredProvider = "CLOUD"  → GeminiAiProvider  │
-│                               (if not disabled)  │
-│                                                  │
-│ preferredProvider = "AUTO" (DEFAULT):             │
-│   Step 1: DeviceAiProvider.isAvailable()? ─Yes─▶ Use Device │
-│                    │No                           │
-│   Step 2: OllamaAiProvider.isAvailable()? ─Yes─▶ Use Ollama │
-│           (pings http://localhost:11434)          │
-│                    │No                           │
-│   Step 3: GeminiAiProvider.isAvailable()? ─Yes─▶ Use Gemini │
-│           (checks if gemini.api.key is set)       │
-│                    │No                           │
-│   All failed → return null → "AI Unavailable"    │
-└─────────────────────────────────────────────────┘
-```
-
-### 8.2 Current State (v2.0 — Post Ollama Removal as Requirement)
-| Provider | Status | Requirement |
-|---|---|---|
-| Device AI | Code exists, not active | No external requirement |
-| Ollama | Optional, AUTO mode tries it | Needs Ollama running locally on port 11434 |
-| Gemini Flash 1.5 | **Primary cloud fallback** | `gemini.api.key` env var in backend |
-| None | If all fail | App still works, AI shows "unavailable" |
-
-### 8.3 Privacy Transparency Report
-Every single AI response includes:
-```json
-{
-  "provider": "Gemini",             // Who processed it
-  "processingMode": "Cloud",        // Local or Cloud
-  "sentOutsideDevice": true,        // Was data sent to external server?
-  "temporaryBufferReleased": true,  // Data cleared after processing
-  "processingTimeSeconds": 2.3,     // Response time
-  "status": "Completed"             // Success/Failed/Unavailable
-}
-```
-
-### 8.4 User-Configurable AI Settings
-```json
-{
-  "preferredProvider": "AUTO",           // AUTO = smart fallback
-  "askPermissionEveryTime": true,        // Ask before using cloud
-  "alwaysAllowCloud": false,             // Never auto-allow cloud
-  "disableCloudAi": false,              // Emergency: block all cloud
-  "preferLocalProcessing": true,         // Prefer local when possible
-  "neverAutomaticallySendToCloud": true, // No silent cloud fallback
-  "showPrivacyNoticeBeforeCloud": true   // Show warning modal
-}
-```
-
-### 8.5 Prompt Manager — All 16 Prompt Templates
-Located in `PromptManager.java`, each method returns a carefully crafted prompt string:
-
-| Method | Key Instruction in Prompt |
-|---|---|
-| `getSummarizePrompt` | "Bullet Summary + Key Points + Important Decisions" |
-| `getSmartReplyPrompt` | "Exactly 3 replies, one per line, no numbering" |
-| `getRewritePrompt` | "Rewrite to sound {MODE}, keep original meaning" |
-| `getGrammarPrompt` | "Return ONLY corrected message, no explanations" |
-| `getTranslatePrompt` | "Return ONLY translated text, no intro remarks" |
-| `getActionItemsPrompt` | "Extract tasks with owner, priority, deadline" |
-| `getMeetingPrompt` | "Return raw JSON only: {isMeeting, title, date, time, location}" |
-| `getReminderPrompt` | "Return raw JSON only: {isReminder, title, time, description}" |
-| `getChatTitlePrompt` | "Return ONLY title, maximum 4 words" |
-| `getMoodPrompt` | "Return raw JSON: {mood, confidenceScore}" |
-| `getNotesPrompt` | "Clean structured notes with headings and bullets" |
-| `getExplainPrompt` | "Explain for {LEVEL} level person" |
-| `getEmailPrompt` | "Professional email: Subject + Greeting + Body + Closing" |
-| `getImprovePrompt` | "Improve readability, return ONLY improved version" |
-| `getDailySummaryPrompt` | "Summarize messages, calls, meetings, tasks, overall summary" |
-| (chat method in AiService) | "You are helpful AI assistant. Answer conversationally." |
 
 ---
 

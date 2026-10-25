@@ -1,8 +1,8 @@
 # 🏛️ PROJECT SUBMISSION REPORT
 ## Proposed System Design, Model Architecture, Code Implementation & Running Model Submission
 
-**Project Title:** Setu Connect — Enterprise Real-Time Chat & AI Collaboration Platform  
-**Version:** 2.0 (Gemini AI & WebRTC Edition)  
+**Project Title:** Setu Connect — Enterprise Real-Time Chat Platform  
+**Version:** 2.0 (WebRTC & E2EE Edition)  
 **Submission Category:** Full-Stack Web Development, Real-Time Distributed Systems & Cloud Integration  
 **Live Frontend (Vercel):** https://internship-project-xi.vercel.app  
 **Live Backend (Render):** https://internship-project-mywr.onrender.com  
@@ -26,14 +26,12 @@
 ## 1. EXECUTIVE SUMMARY & PROBLEM STATEMENT
 
 ### 1.1 Project Overview
-**Setu Connect** is an enterprise-grade, privacy-first real-time messaging and team collaboration web application. It combines WhatsApp-style synchronous instant messaging with client-side zero-knowledge encryption (AES-GCM-256), peer-to-peer WebRTC voice/video calls, and an intelligent multi-tiered AI assistant (Device-level Web AI → Local Ollama → Google Gemini 1.5 Flash fallback).
+**Setu Connect** is an enterprise-grade, privacy-first real-time messaging and team collaboration web application. It combines WhatsApp-style synchronous instant messaging with client-side zero-knowledge encryption (AES-GCM-256) and peer-to-peer WebRTC voice/video calls.
 
 ### 1.2 Core Problems Solved
 | Traditional Team Chat Issues | Setu Connect Solution |
 |---|---|
-| Sensitive enterprise data exposed to cloud AI APIs | Multi-tiered AI with on-device/local-first execution and strict privacy controls |
 | Lack of audit trails and call logs | Comprehensive analytics dashboard and call session history |
-| High external LLM API cost & rate limits | Tiered fallback mechanism (Device AI $\rightarrow$ Ollama $\rightarrow$ Gemini API) |
 | Vulnerable centralized chat data stores | Zero-knowledge client-side AES-GCM-256 End-to-End Encryption (E2EE) |
 | Ephemeral messaging without auto-cleanup | Vanish Mode with auto-destruct timers and 24-hour status stories |
 
@@ -50,7 +48,7 @@ flowchart TB
         CryptoEngine["Web Crypto API (AES-GCM-256 E2EE)"]
         STOMPClient["STOMP / SockJS WebSocket Client"]
         WebRTCClient["WebRTC Audio/Video Engine"]
-        ContextHub["State Hubs (Auth, Chat, Socket, Call, AI)"]
+        ContextHub["State Hubs (Auth, Chat, Socket, Call)"]
         
         UI <--> CryptoEngine
         UI <--> ContextHub
@@ -74,13 +72,6 @@ flowchart TB
             TopicSub["/topic/messages, /topic/status"]
             QueueSub["/queue/notifications, /user/queue/calls"]
         end
-        
-        subgraph AISubsystem ["Multi-Tier AI Routing Subsystem"]
-            AIEngine["AI Orchestrator"]
-            DeviceAI["Tier 1: Device Web AI (Window.ai)"]
-            OllamaAI["Tier 2: Local Ollama (Llama 3 / Mistral)"]
-            GeminiAI["Tier 3: Google Gemini 1.5 Flash Cloud"]
-        end
     end
 
     subgraph DataLayer ["Persistence & Storage Layer"]
@@ -97,11 +88,6 @@ flowchart TB
     
     AuthCtrl & MsgCtrl & CallCtrl & StatusCtrl & AnalyticsCtrl --> PostgresDB
     StatusCtrl --> MediaStorage
-    
-    AIEngine --> DeviceAI
-    AIEngine --> OllamaAI
-    AIEngine --> GeminiAI
-    MsgCtrl <--> AIEngine
 ```
 
 ### 2.2 Component & Tier Architecture
@@ -122,7 +108,6 @@ flowchart LR
     UserA((User A))
     UserB((User B))
     SetuSystem[Setu Connect Platform]
-    GeminiCloud[(Google Gemini Cloud API)]
     PostgresStore[(PostgreSQL Database)]
 
     UserA -->|1. Credentials, Encrypted Messages, Media, WebRTC Signals| SetuSystem
@@ -131,8 +116,7 @@ flowchart LR
     UserB -->|3. Credentials, Encrypted Messages, Read Receipts| SetuSystem
     SetuSystem -->|4. Push Delivery, WebRTC Signals, Online Status| UserB
 
-    SetuSystem <-->|5. Smart Replies, Summarization, Translation Requests| GeminiCloud
-    SetuSystem <-->|6. Persist Chats, Users, Contacts, Call Logs, Analytics| PostgresStore
+    SetuSystem <-->|5. Persist Chats, Users, Contacts, Call Logs, Analytics| PostgresStore
 ```
 
 ### 3.2 DFD Level 1 (Functional Subsystems Decomposition)
@@ -145,16 +129,14 @@ flowchart TD
         P1["1.0 Authentication & Session Management"]
         P2["2.0 Real-Time Messaging & E2EE Broker"]
         P3["3.0 WebRTC Call Signaling Engine"]
-        P4["4.0 Multi-Tier AI Assistant Pipeline"]
-        P5["5.0 Status, Media & Ephemeral Dispatch"]
-        P6["6.0 Conversation Analytics Engine"]
+        P4["4.0 Status, Media & Ephemeral Dispatch"]
+        P5["5.0 Conversation Analytics Engine"]
     end
 
     D1[("D1: Users & Auth Store")]
     D2[("D2: Messages & Vanish Store")]
     D3[("D3: Call Records Store")]
     D4[("D4: Status & Media Store")]
-    ExternalAI["External LLM (Gemini 1.5 Flash)"]
 
     User -->|Credentials| P1
     P1 -->|Generate JWT & Validate| D1
@@ -168,17 +150,13 @@ flowchart TD
     P3 -->|Relay Signaling & Log Call| D3
     P3 -->|Signal Stream| User
 
-    User -->|Prompt / Chat Context| P4
-    P4 <-->|Query Fallback Model| ExternalAI
-    P4 -->|AI Suggestions / Summaries| User
+    User -->|Story / Media File| P4
+    P4 -->|Store Blob & Metadata| D4
+    P4 -->|24h Ephemeral Broadcast| User
 
-    User -->|Story / Media File| P5
-    P5 -->|Store Blob & Metadata| D4
-    P5 -->|24h Ephemeral Broadcast| User
-
-    User -->|Interaction Event| P6
-    P6 -->|Compute Metrics & Streaks| D2
-    P6 -->|Analytics Dashboard Data| User
+    User -->|Interaction Event| P5
+    P5 -->|Compute Metrics & Streaks| D2
+    P5 -->|Analytics Dashboard Data| User
 ```
 
 ### 3.3 DFD Level 2 (Real-Time Messaging & Dispatch Subsystem)
@@ -286,35 +264,7 @@ flowchart TD
     NotifySenderRead --> EndTicks([Sender UI updates to Double Blue Ticks 🔵🔵])
 ```
 
-### 4.3 Multi-Tier AI Assistance Execution Flowchart
-
-```mermaid
-flowchart TD
-    AIReq([User clicks AI Action: Smart Reply / Summarize / Translate / Tone]) --> CheckTier1{Tier 1: Is window.ai / Device AI available?}
-    
-    CheckTier1 -- Yes --> ExecTier1[Execute on local hardware neural engine]
-    ExecTier1 --> SuccTier1{Execution Successful?}
-    SuccTier1 -- Yes --> FormatResult[Format and inject into composer / UI]
-    SuccTier1 -- No --> CheckTier2
-    
-    CheckTier1 -- No --> CheckTier2{Tier 2: Is Ollama running on localhost:11434?}
-    CheckTier2 -- Yes --> ExecTier2[Dispatch prompt to local Ollama Llama 3 API]
-    ExecTier2 --> SuccTier2{Execution Successful?}
-    SuccTier2 -- Yes --> FormatResult
-    SuccTier2 -- No --> CheckTier3
-    
-    CheckTier2 -- No --> CheckTier3{Tier 3: Is Gemini Cloud API configured?}
-    CheckTier3 -- Yes --> ExecTier3[Call Google Gemini 1.5 Flash Cloud API]
-    ExecTier3 --> SuccTier3{Execution Successful?}
-    SuccTier3 -- Yes --> FormatResult
-    SuccTier3 -- No --> HeuristicRule
-    
-    CheckTier3 -- No --> HeuristicRule[Client-side rule-based heuristic fallback]
-    HeuristicRule --> FormatResult
-    FormatResult --> Finish([User accepts / edits AI output])
-```
-
-### 4.4 WebRTC Voice/Video Call Signaling Flowchart
+### 4.3 WebRTC Voice/Video Call Signaling Flowchart
 
 ```mermaid
 sequenceDiagram
@@ -368,7 +318,6 @@ erDiagram
     USERS ||--o{ STATUSES : "publishes"
     USERS ||--o{ SCHEDULED_MESSAGES : "queues"
     USERS ||--|| PRIVACY_SETTINGS : "owns"
-    USERS ||--|| AI_SETTINGS : "configures"
     USERS ||--o{ CONVERSATION_VANISH_MODES : "sets"
     USERS }|--|{ CHAT_GROUPS : "participates"
 
@@ -380,7 +329,6 @@ erDiagram
         varchar password
         varchar avatar_url
         varchar about
-        varchar public_key
         timestamp last_seen
         boolean is_online
         timestamp created_at
@@ -451,14 +399,6 @@ erDiagram
         boolean vanish_mode_default
     }
 
-    AI_SETTINGS {
-        bigint id PK
-        bigint user_id FK
-        varchar preferred_provider
-        boolean smart_replies_enabled
-        boolean auto_summarize_enabled
-    }
-
     CONVERSATION_VANISH_MODES {
         bigint id PK
         bigint user1_id FK
@@ -488,7 +428,6 @@ erDiagram
 | `statuses` | `id` (BIGINT) | `user_id` | `content` (TEXT), `media_url` (VARCHAR), `expires_at` (TIMESTAMP) | 24-hour ephemeral stories and media updates |
 | `scheduled_messages` | `id` (BIGINT) | `sender_id`, `receiver_id` | `content` (TEXT), `scheduled_time` (TIMESTAMP), `status` (VARCHAR) | Queued messages for scheduled cron dispatch |
 | `privacy_settings` | `id` (BIGINT) | `user_id` | `last_seen_visibility` (VARCHAR), `read_receipts_enabled` (BOOLEAN) | Granular user visibility and security toggles |
-| `ai_settings` | `id` (BIGINT) | `user_id` | `preferred_provider` (VARCHAR), `smart_replies_enabled` (BOOLEAN) | Custom AI behavior and provider preference |
 | `conversation_vanish_modes` | `id` (BIGINT) | `user1_id`, `user2_id` | `is_enabled` (BOOLEAN), `duration_seconds` (INT) | Per-chat ephemeral auto-destruct timer configuration |
 
 ---
@@ -531,48 +470,6 @@ Output: Base64 Encoded Ciphertext Packet (Packet_out)
    Return UTF8_Decode(Plaintext)
 ```
 
-### 6.2 Multi-Tier AI Provider Selection & Fallback Routing
-
-```
-Algorithm 2: Dynamic Multi-Tier AI Fallback Engine
-Input: Prompt (P), Conversation History (H), Feature Type (F)
-Output: Formatted Response Text (R)
-
-Function ResolveAIRequest(P, H, F):
-    // Tier 1: Hardware-Accelerated Local Device AI
-    If Window.ai exists AND Window.ai.canCreateTextSession() == "readily":
-        Try:
-            Session = Window.ai.createTextSession()
-            Return Session.prompt(BuildSystemPrompt(P, H, F))
-        Catch DeviceError:
-            LogWarning("Tier 1 Device AI failed. Falling back to Tier 2...")
-
-    // Tier 2: Local Ollama Daemon
-    If IsOllamaRunning("http://localhost:11434"):
-        Try:
-            Response = HTTP_POST("http://localhost:11434/api/generate", {
-                "model": "llama3",
-                "prompt": BuildSystemPrompt(P, H, F),
-                "stream": false
-            })
-            Return Response.json().response
-        Catch OllamaError:
-            LogWarning("Tier 2 Ollama failed. Falling back to Tier 3...")
-
-    // Tier 3: Google Cloud Gemini 1.5 Flash API
-    If Environment.GEMINI_API_KEY is not empty:
-        Try:
-            Return GoogleGeminiClient.generateContent({
-                "model": "gemini-1.5-flash",
-                "contents": BuildSystemPrompt(P, H, F)
-            })
-        Catch GeminiError:
-            LogWarning("Tier 3 Cloud API failed. Falling back to Heuristic Rules...")
-
-    // Fallback: Rule-Based Deterministic Heuristics
-    Return ExecuteClientHeuristics(P, F)
-```
-
 ---
 
 ## 7. CODE IMPLEMENTATION DETAILS
@@ -586,7 +483,6 @@ Function ResolveAIRequest(P, H, F):
   * `AuthController.java`: Handles user registration, credentials validation, and JWT token issuance.
   * `MessageController.java`: Manages message lifecycle (send, edit, delete, star, delivery receipts, vanish auto-purge).
   * `CallController.java`: Manages WebRTC call signaling sessions, missed call alerts, and call logging.
-  * `AiController.java`: Integrates Google Gemini 1.5 Flash and Spring AI Ollama for summarization and smart replies.
   * `StatusController.java`: Coordinates 24h disappearing statuses and media uploads.
   * `AnalyticsController.java`: Aggregates user chat frequencies, response latency, and weekly engagement graphs.
 
@@ -595,7 +491,7 @@ Function ResolveAIRequest(P, H, F):
 * **Component Structure:**
   * `Auth/`: Authentication modal with smooth tab transitions between login and registration.
   * `Sidebar/`: 3-column navigation rail featuring Contacts, Chats, Statuses, Calls, Analytics, and Settings panels.
-  * `ChatWindow/`: Active conversation view with interactive message feed, emoji reactions, voice notes, media viewer, and AI Smart Compose.
+  * `ChatWindow/`: Active conversation view with interactive message feed, emoji reactions, voice notes, and media viewer.
   * `Modals/`: Dedicated dialogs for Security settings, Vanish mode timer, Media preview, and Scheduled messages.
 * **State Management Hubs (Context API):**
   * `AuthContext.jsx`: User identity, authentication status, and profile updates.
@@ -661,10 +557,9 @@ npm run dev
 | **TC-03** | Delivery & Read Receipts | User A sends message $\rightarrow$ User B receives $\rightarrow$ User B opens chat | Ticks update: 🕒 (Sending) $\rightarrow$ ✓ (Sent) $\rightarrow$ ✓✓ (Delivered) $\rightarrow$ 🔵🔵 (Read) | **PASSED** ✅ |
 | **TC-04** | End-to-End Encryption | Inspect network frame and PostgreSQL database contents | Content stored as encrypted ciphertext; plaintext only in client memory | **PASSED** ✅ |
 | **TC-05** | WebRTC Video/Voice Call | User A initiates video call to User B $\rightarrow$ User B accepts | Full-duplex audio/video stream established with peer connection | **PASSED** ✅ |
-| **TC-06** | AI Summarization | Select chat with 10+ messages $\rightarrow$ Click 'Summarize with AI' | Multi-tier AI generates structured bulleted summary of key points | **PASSED** ✅ |
-| **TC-07** | Vanish Mode | Set 10-second vanish timer $\rightarrow$ Send message | Message automatically purged from UI and database after 10 seconds | **PASSED** ✅ |
-| **TC-08** | 24h Ephemeral Stories | Upload image status $\rightarrow$ View from contact account | Story displays with viewer tracking; auto-expires after 24 hours | **PASSED** ✅ |
-| **TC-09** | Conversation Analytics | Open Analytics tab from sidebar rail | Interactive charts render response times, message frequencies, streaks | **PASSED** ✅ |
+| **TC-06** | Vanish Mode | Set 10-second vanish timer $\rightarrow$ Send message | Message automatically purged from UI and database after 10 seconds | **PASSED** ✅ |
+| **TC-07** | 24h Ephemeral Stories | Upload image status $\rightarrow$ View from contact account | Story displays with viewer tracking; auto-expires after 24 hours | **PASSED** ✅ |
+| **TC-08** | Conversation Analytics | Open Analytics tab from sidebar rail | Interactive charts render response times, message frequencies, streaks | **PASSED** ✅ |
 
 ---
 

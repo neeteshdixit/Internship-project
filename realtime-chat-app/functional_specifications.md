@@ -1,10 +1,10 @@
 # Functional Specifications Document (FSD)
 
-## Project: Setu Connect — Real-Time Chat with Multi-Provider AI
+## Project: Setu Connect — Secure Real-Time Chat
 **Product Name:** Setu Connect  
 **Target Audience:** Frontend Developers, QA Engineers, System Integrators  
 **Status:** APPROVED (Updated v2.0 — August 2026)  
-**Key Change:** Ollama removed as required dependency. Multi-Provider AI: Device → Ollama (optional) → Gemini (cloud fallback). Redis removed — presence handled in-memory.
+**Key Change:** Redis removed — presence handled in-memory.
 
 ---
 
@@ -22,10 +22,10 @@ The application features a two-panel responsive layout (Sidebar + ChatWindow) wi
 |  | User 2 [Last msg] [time]  |                                   |
 |R | Group A [Last msg]        |      [Sent: green bubble] →       |
 |a |                           |                                   |
-|i | [Active Tab Panel]        |   [AI Panel - expandable]         |
+|i | [Active Tab Panel]        |                                   |
 |l |   Chats / Calls / Status  |                                   |
 |  |   Analytics / Settings    +-----------------------------------+
-|  |                           |   [ Input Bar: 📎 type... 🤖 ➤ ] |
+|  |                           |   [ Input Bar: 📎 type... ➤ ]     |
 +--+---------------------------+-----------------------------------+
 ```
 
@@ -48,8 +48,7 @@ The application features a two-panel responsive layout (Sidebar + ChatWindow) wi
     - Sent (right): Background `#005c4b`, border-radius `18px 18px 4px 18px`
     - Received (left): Background `#202c33`, border-radius `18px 18px 18px 4px`
     - Status ticks: ✓ (sent), ✓✓ (delivered), 🔵✓✓ (read)
-*   **AI Panel:** Expandable section with 16 AI feature buttons + response area + privacy report
-*   **Input Bar:** Background `#2a3942`, text input, attach icon, AI icon, send button (`#00a884`)
+*   **Input Bar:** Background `#2a3942`, text input, attach icon, send button (`#00a884`)
 
 ---
 
@@ -105,31 +104,7 @@ User types → debounced event (300ms) →
     → Auto-clears after 3 seconds (client-side timer)
 ```
 
-### 2.5. AI Summarization Flow (Multi-Provider)
-```
-User clicks "Summarize Chat" in AI panel
-    → Transcript built from local message state
-    → GET /api/ai/preflight → {providerName, isCloud, requiresPermission}
-    → If requiresPermission = true → Show privacy permission modal
-    → User confirms → POST /api/ai/summarize {text: transcript}
-    → Backend: AiProviderManager.selectProvider()
-        AUTO mode: DeviceAI? → no → Ollama? → no → Gemini? → yes
-    → GeminiAiProvider.generate(promptText)
-        → POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent
-        → Parse candidates[0].content.parts[0].text
-    → Return AiReportResponse {
-        responseText: "Summary...",
-        provider: "Gemini",
-        processingMode: "Cloud",
-        sentOutsideDevice: true,
-        temporaryBufferReleased: true,
-        processingTimeSeconds: 2.3,
-        status: "Completed"
-      }
-    → Frontend shows summary + privacy report card
-```
-
-### 2.6. Voice/Video Call Flow (WebRTC via WebSocket Signaling)
+### 2.5. Voice/Video Call Flow (WebRTC via WebSocket Signaling)
 ```
 Caller clicks Call Button →
     navigator.getUserMedia() → localStream
@@ -149,7 +124,7 @@ End Call:
     → Real-time call history update via /topic/callhistory/{username}
 ```
 
-### 2.7. Group Chat Flow
+### 2.6. Group Chat Flow
 ```
 User creates group via GroupModal →
     POST /api/groups {name: "Team Alpha", memberUsernames: ["alice", "bob"]}
@@ -187,12 +162,6 @@ Send group message →
 | Schedule Message | ScheduledModal | POST /api/scheduled | No (auto-send via scheduler) |
 | Vanish Mode | VanishModeModal | POST /api/vanish-mode | No |
 | Upload Profile Pic | Settings | POST /api/users/profile-image | No |
-| AI Summarize | AI Panel | POST /api/ai/summarize | No |
-| AI Smart Reply | AI Panel | POST /api/ai/smart-reply | No |
-| AI Translate | Context menu | POST /api/ai/translate | No |
-| AI Rewrite | Compose bar | POST /api/ai/rewrite | No |
-| AI Grammar Fix | Compose bar | POST /api/ai/grammar | No |
-| AI Chat Assistant | AIModal | POST /api/ai/chat | No |
 | Export Chat | ConversationControl | Client-side | No |
 | Universal Search | UniversalSearchModal | Client-side (local state) | No |
 
@@ -202,9 +171,6 @@ Send group message →
 
 | Failure Scenario | Impact on User | System Recovery Action |
 |---|---|---|
-| **Gemini API key missing/invalid** | AI features unavailable | `/api/ai/preflight` returns `provider: "None"`. UI shows "AI Unavailable" gracefully. Core chat unaffected. |
-| **Ollama not running** | Ollama provider unavailable | `OllamaAiProvider.isAvailable()` returns false. AUTO mode skips to Gemini. |
-| **All AI providers failed** | No AI response | Returns `AiReportResponse {status: "Unavailable"}`. UI shows friendly error. |
 | **WebSocket disconnect** | Real-time messaging stops | STOMP client auto-reconnects every 5 seconds. Offline messages queued in localStorage `offlineMessageQueue`, flushed on reconnect. |
 | **PostgreSQL unavailable** | App cannot load data | Spring Boot fails fast. HTTP 500 returned. No data corruption. |
 | **File upload too large** | Upload rejected | Backend returns HTTP 400 with message "File size exceeds 5MB limit" |
@@ -226,17 +192,3 @@ Send group message →
 | CORS Policy | WebSocket: specific origins (Vercel URL + localhost). REST: configurable via SecurityConfig |
 | Privacy Settings | Server-side enforcement — profile fields redacted based on user's privacy configuration |
 | Panic Wipe | Immediate DB purge + real-time broadcast to all affected parties |
-
----
-
-## 6. AI Provider Configuration Reference
-
-| Setting | Values | Default | Behavior |
-|---|---|---|---|
-| `preferredProvider` | AUTO, DEVICE, LOCAL, CLOUD | AUTO | Provider selection strategy |
-| `askPermissionEveryTime` | true/false | true | Show modal before each cloud AI call |
-| `alwaysAllowCloud` | true/false | false | Skip permission check if true |
-| `disableCloudAi` | true/false | false | Block ALL cloud AI calls |
-| `preferLocalProcessing` | true/false | true | Prefer local over cloud in AUTO mode |
-| `neverAutomaticallySendToCloud` | true/false | true | No silent cloud fallback |
-| `showPrivacyNoticeBeforeCloud` | true/false | true | Always show privacy warning |
